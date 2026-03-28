@@ -84,11 +84,14 @@ function el(id) {
 const timerContainer = el("timers");
 const durationTimer = el("duration-timer");
 const pauseTimer = el("pause-timer");
-const pauseOverlay = el("pause-overlay");
 
 const startButton = el("start");
 const stopButton = el("stop");
+
 const pauseButton = el("pause");
+const pauseOverlay = el("pause-overlay");
+const resumeButton = el("resume");
+
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -196,11 +199,11 @@ stopButton.addEventListener('click', function () {
 });
 
 pauseButton.addEventListener('click', function () {
-  if (isPaused) {
-    resumeRun();
-  } else {
-    pauseRun();
-  }
+  pauseRun();
+});
+
+resumeButton.addEventListener('click', function () {
+  resumeRun();
 });
 
 
@@ -216,7 +219,6 @@ function startRun() {
   startButton.style.display = 'none';
   pauseButton.style.display = 'inline-block';
   stopButton.style.display = 'inline-block';
-  pauseButton.textContent = 'PAUSE';
   timerContainer.style.display = 'block';
   pauseTimer.style.display = 'none';
   pauseOverlay.style.display = 'none';
@@ -227,7 +229,6 @@ function pauseRun() {
   isPaused = true;
   lastPauseStart = Date.now();
   geolocation.setTracking(false);
-  pauseButton.textContent = 'RESUME';
   pauseOverlay.style.display = 'block';
   pauseTimer.style.display = 'block';
   if (autoPauseTimer) {
@@ -240,7 +241,6 @@ function resumeRun() {
   isPaused = false;
   pausedTime += Date.now() - lastPauseStart;
   geolocation.setTracking(true);
-  pauseButton.textContent = 'PAUSE';
   pauseOverlay.style.display = 'none';
   pauseTimer.style.display = 'none';
 }

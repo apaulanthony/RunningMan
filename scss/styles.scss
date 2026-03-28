@@ -81,6 +81,16 @@ body, html {
   box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
 }
 
+.stop-btn {
+  background-color: red;
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  font-size: 18px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
 .pause-btn {
   background-color: orange;
   color: white;
@@ -91,14 +101,20 @@ body, html {
   cursor: pointer;
 }
 
-.stop-btn {
-  background-color: red;
+.resume-btn {
+  background-color: orange;
   color: white;
   border: none;
-  padding: 15px 30px;
-  font-size: 18px;
-  border-radius: 5px;
+  padding: 20px;
+  font-size: 24px;
+  border-radius: 50%;
+  width: 300px;
+  height: 300px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
 }
 
 .start-btn, .pause-btn, .stop-btn {
