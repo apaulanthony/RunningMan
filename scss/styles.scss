@@ -145,7 +145,8 @@ dialog {
 		display: flex;
 		justify-content: space-around;
 
-		.confirm-btn, .cancel-btn {
+		.confirm-btn,
+		.cancel-btn {
 			padding: 10px 20px;
 			font-size: 1rem;
 			border: none;

@@ -108,6 +108,7 @@ function updateTimers() {
 	}
 }
 
+// Haversine formula to calculate distance between two lat/lon points in metres https://en.wikipedia.org/wiki/Haversine_formula
 function haversineDistance(lat1, lon1, lat2, lon2) {
 	const R = 6371; // Radius of the Earth in km
 	const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -116,7 +117,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 		Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
 		Math.sin(dLon / 2) * Math.sin(dLon / 2);
 	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-	return R * c * 1000; // in meters
+	return R * c * 1000; // in metres
 }
 
 function calculateTotalDistance() {
@@ -180,18 +181,16 @@ geolocation.on('change:position', function () {
 	// Check for auto-pause
 	if (lastPosition) {
 		const dist = haversineDistance(lastPosition[1], lastPosition[0], lat, lon);
-		if (dist < 5) { // less than 5m movement
-			if (!autoPauseTimer) {
-				autoPauseTimer = setTimeout(() => {
-					if (isTracking && !isPaused) {
-						pauseRun();
-					} else if (!isTracking) {
-						cancelAutoPauseTimer();
-					}
-				}, 60000); // 1 minute
-			}
-		} else {
+		if (dist >= 5) { // More than 5m movement
 			cancelAutoPauseTimer();
+		} else if (!autoPauseTimer) {
+			autoPauseTimer = setTimeout(() => {
+				if (isTracking && !isPaused) {
+					pauseRun();
+				} else if (!isTracking) {
+					cancelAutoPauseTimer();
+				}
+			}, 60_000); // 1 minute
 		}
 	}
 
@@ -285,12 +284,12 @@ async function showSummary(summary) {
 		const summaryContent = el("summary-content");
 		const summaryClose = el("summary-close");
 
-		summaryContent.textContent = `Total time: ${formatTime(Math.round(summary.totalTime))} (hh:mm:ss count not exact)
+		summaryContent.textContent = `Total time: ${formatTime(Math.round(summary.totalTime))}
 			Paused time: ${formatTime(Math.round(summary.pausedTime))}
 			Active time: ${formatTime(Math.round(summary.activeTime))}
 			Distance: ${(summary.distance / 1000).toFixed(2)} km
-			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h
-			Avg pace: ${summary.avgPace.toFixed(2)} min/km`;
+			Avg pace: ${summary.avgPace.toFixed(2)} min/km
+			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h`;
 
 		summaryDialog.showModal();
 
@@ -313,22 +312,23 @@ async function stopRun() {
 		return;
 	}
 
+	// Times are calcuated in milliseconds, convert to seconds for display and storage
 	const endTime = Date.now();
 	const totalTime = endTime - startTime;
 	const activeTime = totalTime - pausedTime;
 	const distance = calculateTotalDistance();
-	const avgSpeed = distance > 0 ? ((distance / 1000) / (activeTime / 3600000)) : 0; // km/h
+
 	const summary = {
 		totalTime: totalTime / 1000, // seconds
-		pausedTime: pausedTime / 1000,
-		activeTime: activeTime / 1000,
-		distance: distance,
-		avgSpeed: avgSpeed,
+		pausedTime: pausedTime / 1000, // seconds
+		activeTime: activeTime / 1000, // seconds
+		distance: distance, // metres
+		avgSpeed: distance > 0 ? ((distance / 1000) / (activeTime / 3_600_000)) : 0, // km/h
 		avgPace: distance > 0 ? (activeTime / 60000) / (distance / 1000) : 0 // min/km
 	};
 
 	await Promise.all([
-		saveRun(positions, summary).then(() => resetRun()),
+		saveRun(positions, summary).then(resetRun),
 		showSummary(summary)
 	]);
 
