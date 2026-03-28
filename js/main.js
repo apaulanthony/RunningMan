@@ -289,8 +289,9 @@ async function showSummary(summary) {
 			Paused time: ${formatTime(Math.round(summary.pausedTime))}
 			Active time: ${formatTime(Math.round(summary.activeTime))}
 			Distance: ${(summary.distance / 1000).toFixed(2)} km
-			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h`;
-			
+			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h
+			Avg pace: ${summary.avgPace.toFixed(2)} min/km`;
+
 		summaryDialog.showModal();
 
 		const clean = () => {
@@ -322,7 +323,8 @@ async function stopRun() {
 		pausedTime: pausedTime / 1000,
 		activeTime: activeTime / 1000,
 		distance: distance,
-		avgSpeed: avgSpeed
+		avgSpeed: avgSpeed,
+		avgPace: distance > 0 ? (activeTime / 60000) / (distance / 1000) : 0 // min/km
 	};
 
 	await Promise.all([
