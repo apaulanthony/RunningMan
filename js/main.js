@@ -284,12 +284,12 @@ async function showSummary(summary) {
 		const summaryContent = el("summary-content");
 		const summaryClose = el("summary-close");
 
-		summaryContent.textContent = `Total time: ${formatTime(Math.round(summary.totalTime))}
-			Paused time: ${formatTime(Math.round(summary.pausedTime))}
-			Active time: ${formatTime(Math.round(summary.activeTime))}
-			Distance: ${(summary.distance / 1000).toFixed(2)} km
-			Avg pace: ${summary.avgPace.toFixed(2)} min/km
-			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h`;
+		summaryContent.innerHTML = `<span class="label">Total time</span>  ${formatTime(Math.round(summary.totalTime))}
+			<br /><span class="label">Paused time</span> ${formatTime(Math.round(summary.pausedTime))}
+			<br /><span class="label">Active time</span> ${formatTime(Math.round(summary.activeTime))}
+			<br /><span class="label">Distance</span> ${(summary.distance / 1000).toFixed(2)} km
+			<br /><span class="label">Avg pace</span> ${summary.avgPace.toFixed(2)} min/km
+			<br /><span class="label">Avg speed</span> ${summary.avgSpeed.toFixed(2)} km/h`;
 
 		summaryDialog.showModal();
 
