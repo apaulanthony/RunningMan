@@ -316,7 +316,7 @@ async function stopRun() {
 	const totalTime = endTime - startTime;
 	const activeTime = totalTime - pausedTime;
 	const distance = calculateTotalDistance();
-	const avgSpeed = distance > 0 ? (activeTime / 1000) / (distance / 1000) : 0; // km/h
+	const avgSpeed = distance > 0 ? ((distance / 1000) / (activeTime / 3600000)) : 0; // km/h
 	const summary = {
 		totalTime: totalTime / 1000, // seconds
 		pausedTime: pausedTime / 1000,
