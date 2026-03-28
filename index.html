@@ -1,29 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Running Man</title>    
-    <link rel="stylesheet" href="node_modules/ol/ol.css" />
-    <link rel="stylesheet" href="scss/styles.scss" />
-    <script type="module" src="js/main.js" defer></script>
-  </head>
-  <body>
-    <div id="map" class="map">
-      <div id="pause-overlay" class="pause-overlay">
-        <button id="resume" class="resume-btn">RESUME</button>
-      </div>
-    </div>
-    <div id="timers" class="timers">
-      <div>Elapsed: <span id="duration-timer">00:00</span></div>
-      <div style="display: none;">Pause: <span id="pause-timer">00:00</span></div>
-    </div>
-    <div id="start-container">
-      <button id="start" class="start-btn">🏃 START</button>
-    </div>
-    <div id="footer" class="footer">
-      <button id="pause" class="pause-btn">PAUSE</button>
-      <button id="stop" class="stop-btn">STOP</button>
-    </div>
-  </body>
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>🏃 Running Man</title>    
+		<link rel="stylesheet" href="node_modules/ol/ol.css" />
+		<link rel="stylesheet" href="scss/styles.scss" />
+		<script type="module" src="js/main.js" defer></script>
+	</head>
+	<body>
+		<div id="map">
+			<div id="timers" style="display: none;">
+				<div id="duration-timer">00:00</div>
+				<div id="pause-timer">Paused: 00:00</div>
+			</div>
+
+			<div id="start-container">
+				<button id="start">🏃 START</button>
+			</div>
+
+			<div id="pause-overlay" style="display: none;">
+				<button id="resume">RESUME</button>
+			</div>
+		</div>
+
+		<div id="button-container" style="display: none;">
+			<button id="pause">PAUSE</button>
+			<button id="stop">STOP</button>
+		</div>
+
+		<dialog id="stop-dialog">
+			<p>Are you sure you want to stop the run?</p>
+			<div class="dialog-controls">
+				<button id="stop-confirm" class="confirm-btn">Yes</button>
+				<button id="stop-cancel" class="cancel-btn">No</button>
+			</div>
+		</dialog>
+
+		<dialog id="summary-dialog">
+			<p id="summary-content">Run summary goes here</p>
+			<div class="dialog-controls">
+				<button id="summary-close" class="confirm-btn">Close</button>
+			</div>
+		</dialog>
+	</body>
 </html>

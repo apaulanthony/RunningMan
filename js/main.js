@@ -33,12 +33,13 @@ const geolocation = new Geolocation({
 
 let isTracking = false;
 let isPaused = false;
+
 let startTime = null;
 let pausedTime = 0;
 let lastPauseStart = null;
 let positions = [];
 let lastPosition = null;
-let lastPositionTime = null;
+
 let autoPauseTimer = null;
 let timerInterval = null;
 
@@ -82,16 +83,9 @@ function el(id) {
 }
 
 const timerContainer = el("timers");
-const durationTimer = el("duration-timer");
-const pauseTimer = el("pause-timer");
-
-const startButton = el("start");
-const stopButton = el("stop");
-
-const pauseButton = el("pause");
+const startContainer = el("start-container");
+const buttonContainer = el("button-container");
 const pauseOverlay = el("pause-overlay");
-const resumeButton = el("resume");
-
 
 function formatTime(seconds) {
 	const mins = Math.floor(seconds / 60);
@@ -101,14 +95,16 @@ function formatTime(seconds) {
 
 function updateTimers() {
 	if (!isTracking) return;
+
 	const now = Date.now();
 	const totalElapsed = Math.floor((now - startTime) / 1000);
 	const activeTime = totalElapsed - Math.floor(pausedTime / 1000);
-	durationTimer.textContent = formatTime(activeTime);
+
+	el("duration-timer").textContent = formatTime(activeTime);
 
 	if (isPaused) {
 		const pauseElapsed = Math.floor((now - lastPauseStart) / 1000);
-		pauseTimer.textContent = formatTime(pauseElapsed);
+		el("pause-timer").textContent = `Paused: ${formatTime(pauseElapsed)}`;
 	}
 }
 
@@ -133,7 +129,7 @@ function calculateTotalDistance() {
 	return distance;
 }
 
-function openDB() {
+async function openDB() {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.open('RunningManDB', 1);
 		request.onupgradeneeded = (event) => {
@@ -147,12 +143,26 @@ function openDB() {
 	});
 }
 
-function saveRun(route, summary) {
-	openDB().then(db => {
+async function saveRun(route, summary) {
+	return openDB().then(db => {
 		const transaction = db.transaction(['runs'], 'readwrite');
 		const store = transaction.objectStore('runs');
 		store.add({ route, ...summary, date: new Date() });
 	});
+}
+
+function cancelAutoPauseTimer() {
+	if (autoPauseTimer) {
+		clearTimeout(autoPauseTimer);
+		autoPauseTimer = null;
+	}
+}
+
+function cancelTimerInterval() {
+	if (timerInterval) {
+		clearInterval(timerInterval);
+		timerInterval = null;
+	}
 }
 
 geolocation.on('change:position', function () {
@@ -173,114 +183,171 @@ geolocation.on('change:position', function () {
 		if (dist < 5) { // less than 5m movement
 			if (!autoPauseTimer) {
 				autoPauseTimer = setTimeout(() => {
-					if (!isPaused) {
+					if (isTracking && !isPaused) {
 						pauseRun();
+					} else if (!isTracking) {
+						cancelAutoPauseTimer();
 					}
 				}, 60000); // 1 minute
 			}
 		} else {
-			if (autoPauseTimer) {
-				clearTimeout(autoPauseTimer);
-				autoPauseTimer = null;
-			}
+			cancelAutoPauseTimer();
 		}
 	}
 
 	lastPosition = [lon, lat];
-	lastPositionTime = Date.now();
 });
 
 
-startButton.addEventListener('click', function () {
-	if (!isTracking) {
-		startRun();
-	}
-});
-
-stopButton.addEventListener('click', function () {
-	stopRun();
-});
-
-pauseButton.addEventListener('click', function () {
-	pauseRun();
-});
-
-resumeButton.addEventListener('click', function () {
-	resumeRun();
-});
-
-
-function startRun() {
-	isTracking = true;
+function resetRun() {	
 	isPaused = false;
-	startTime = Date.now();
+	startTime = null;
 	pausedTime = 0;
+	lastPauseStart = null;
 	positions = [];
 	lastPosition = null;
-	lastPositionTime = null;
-	geolocation.setTracking(true);
-	startButton.style.display = 'none';
-	pauseButton.style.display = 'inline-block';
-	stopButton.style.display = 'inline-block';
+
+	cancelAutoPauseTimer();
+	geolocation.setTracking(isTracking = false);
+}
+
+function resetUi() {
+	startContainer.style.display = 'block';
+	timerContainer.style.display = 'none';
+	buttonContainer.style.display = 'none';
+
+	pathFeature.setGeometry(null);
+	positionFeature.setGeometry(null);
+
+	cancelAutoPauseTimer();
+	cancelTimerInterval();
+}
+
+function startRun() {
+	resetRun();
+
+	startTime = Date.now();
+	geolocation.setTracking(isTracking = true);
+
+	startContainer.style.display = 'none';
 	timerContainer.style.display = 'block';
-	pauseTimer.parentElement.style.display = 'none';
-	pauseOverlay.style.display = 'none';
+	buttonContainer.style.display = 'flex';
+
 	timerInterval = setInterval(updateTimers, 1000);
 }
 
 function pauseRun() {
 	isPaused = true;
 	lastPauseStart = Date.now();
-	geolocation.setTracking(false);
 	pauseOverlay.style.display = 'block';
-	pauseTimer.parentElement.style.display = 'block';
-	if (autoPauseTimer) {
-		clearTimeout(autoPauseTimer);
-		autoPauseTimer = null;
-	}
+	cancelAutoPauseTimer();
 }
 
 function resumeRun() {
 	isPaused = false;
 	pausedTime += Date.now() - lastPauseStart;
-	geolocation.setTracking(true);
 	pauseOverlay.style.display = 'none';
-	pauseTimer.parentElement.style.display = 'none';
 }
 
-function stopRun() {
-	isTracking = false;
-	isPaused = false;
-	geolocation.setTracking(false);
+async function confirmStop() {
+	return new Promise((resolve) => {
+		const stopDialog = el("stop-dialog");
+		const stopConfirm = el("stop-confirm");
+		const stopCancel = el("stop-cancel");
+
+		stopDialog.showModal();
+
+		const clean = () => {
+			stopConfirm.removeEventListener('click', onConfirm);
+			stopCancel.removeEventListener('click', onCancel);
+		};
+
+		const onConfirm = () => {
+			clean();
+			stopDialog.close();
+			resolve(true);
+		}
+
+		const onCancel = () => {
+			clean();
+			stopDialog.close();
+			resolve(false);
+		}
+
+		stopConfirm.addEventListener('click', onConfirm);
+		stopCancel.addEventListener('click', onCancel);
+	});
+}
+
+async function showSummary(summary) {
+	return new Promise((resolve) => {
+		const summaryDialog = el("summary-dialog");
+		const summaryContent = el("summary-content");
+		const summaryClose = el("summary-close");
+
+		summaryContent.textContent = `Total time: ${formatTime(Math.round(summary.totalTime))} (hh:mm:ss count not exact)
+			Paused time: ${formatTime(Math.round(summary.pausedTime))}
+			Active time: ${formatTime(Math.round(summary.activeTime))}
+			Distance: ${(summary.distance / 1000).toFixed(2)} km
+			Avg speed: ${summary.avgSpeed.toFixed(2)} km/h`;
+			
+		summaryDialog.showModal();
+
+		const clean = () => {
+			summaryClose.removeEventListener('click', onClose);
+		};
+
+		const onClose = () => {
+			clean();
+			summaryDialog.close();
+			resolve();
+		}
+			
+		summaryClose.addEventListener('click', onClose);		
+	});
+}
+
+async function stopRun() {
+	if (!await confirmStop()) {
+		return;
+	}
+
 	const endTime = Date.now();
 	const totalTime = endTime - startTime;
 	const activeTime = totalTime - pausedTime;
 	const distance = calculateTotalDistance();
 	const avgSpeed = distance > 0 ? (activeTime / 1000) / (distance / 1000) : 0; // km/h
-	saveRun(positions, {
+	const summary = {
 		totalTime: totalTime / 1000, // seconds
 		pausedTime: pausedTime / 1000,
-		distance,
-		avgSpeed
-	});
+		activeTime: activeTime / 1000,
+		distance: distance,
+		avgSpeed: avgSpeed
+	};
 
-	// Reset UI
-	startButton.style.display = 'block';
-	pauseButton.style.display = 'none';
-	stopButton.style.display = 'none';
-	timerContainer.style.display = 'none';
-	pauseTimer.style.display = 'none';
-	pauseOverlay.style.display = 'none';
-	pathFeature.setGeometry(null);
-	positionFeature.setGeometry(null);
+	await Promise.all([
+		saveRun(positions, summary).then(() => resetRun()),
+		showSummary(summary)
+	]);
 
-	if (autoPauseTimer) {
-		clearTimeout(autoPauseTimer);
-		autoPauseTimer = null;
-	}
-
-	if (timerInterval) {
-		clearInterval(timerInterval);
-		timerInterval = null;
-	}
+	resetUi();
 }
+
+
+el("start").addEventListener('click', function () {
+	if (!isTracking) {
+		startRun();
+	}
+});
+
+el("stop").addEventListener('click', function () {
+	stopRun();
+});
+
+el("pause").addEventListener('click', function () {
+	pauseRun();
+});
+
+el("resume").addEventListener('click', function () {
+	resumeRun();
+});
