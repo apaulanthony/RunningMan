@@ -147,25 +147,37 @@ function calculateTotalDistance() {
 	return distance;
 }
 
+// Open (or create) the IndexedDB database and object store for runs, returning a promise that resolves to the database instance
 async function openDB() {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.open('RunningManDB', 1);
+
 		request.onupgradeneeded = (event) => {
 			const db = event.target.result;
 			if (!db.objectStoreNames.contains('runs')) {
 				db.createObjectStore('runs', { keyPath: 'id', autoIncrement: true });
 			}
 		};
+
 		request.onsuccess = (event) => resolve(event.target.result);
 		request.onerror = (event) => reject(event.target.error);
 	});
 }
 
+// Save a run to IndexedDB, returning a promise that resolves to the ID of the saved run
 async function saveRun(route, summary) {
-	return openDB().then(db => {
-		const transaction = db.transaction(['runs'], 'readwrite');
-		const store = transaction.objectStore('runs');
-		store.add({ route, ...summary, date: new Date() });
+	const db = await openDB();
+	const transaction = db.transaction(['runs'], 'readwrite');
+	const store = transaction.objectStore('runs');
+	
+	return new Promise((resolve, reject) => {
+		// Store the route and summary data together, along with a default timestamp for
+		// sorting if one isn't provided in the summary (the difference being startTime vs endTime,
+		// but either works for sorting runs chronologically)
+		const request = store.add({date: new Date(), route: route, ...summary});
+
+		request.onsuccess = (event) => resolve(event.target.result);
+		request.onerror = (event) => reject(event.target.error);
 	});
 }
 
@@ -228,10 +240,40 @@ function resetRun() {
 	geolocation.setTracking(isTracking = false);
 }
 
-function resetUi() {
-	startContainer.style.display = 'block';
-	timerContainer.style.display = 'none';
-	actionContainer.style.display = 'none';
+
+async function fadeInOut(element, display = "block") {
+	const delay = 0.25; // Match the CSS transition duration
+	element.style.transition = `opacity ${delay}s ease-in-out`;
+
+	if (display === "none") {
+		// Use a timeout to ensure the opacity change is applied before changing display, allowing the fade-out effect to occur
+		return Promise.resolve().then(() => {
+			element.style.opacity = 0;
+		}).then(() => new Promise(resolve => { setTimeout(resolve, delay * 1000) }).then(() => {
+			element.style.display = display;
+		}));
+	} else {
+		// Ensure that display and opacity are applied seperately to trigger the fade-in transition
+		// Return a promise that resolves after the fade-in transition is complete, allowing callers 
+		// to wait for the animation to finish before proceeding
+		return Promise.resolve().then(() => {
+			element.style.display = display;
+		}).then(() => {
+			element.style.opacity = 1;
+		
+			return new Promise(resolve => { setTimeout(resolve, delay * 1000) });
+		});
+	}
+}
+
+
+async function resetUi() {
+	await Promise.all([
+		fadeInOut(startContainer, 'block'),
+		fadeInOut(historyContainer, 'flex'),
+		fadeInOut(timerContainer, 'none'),
+		fadeInOut(actionContainer, 'none')
+	]);
 
 	pathFeature.setGeometry(null);
 	positionFeature.setGeometry(null);
@@ -240,30 +282,33 @@ function resetUi() {
 	cancelTimerInterval();
 }
 
-function startRun() {
+async function startRun() {
 	resetRun();
 
 	startTime = Date.now();
 	geolocation.setTracking(isTracking = true);
 
-	startContainer.style.display = 'none';
-	timerContainer.style.display = 'block';
-	actionContainer.style.display = 'flex';
+	await Promise.all([
+		fadeInOut(startContainer, 'none'),
+		fadeInOut(historyContainer, 'none'),
+		fadeInOut(timerContainer, 'block'),
+		fadeInOut(actionContainer, 'flex')
+	]);
 
 	timerInterval = setInterval(updateTimers, 1000);
 }
 
-function pauseRun() {
+async function pauseRun() {
 	isPaused = true;
 	lastPauseStart = Date.now();
-	pauseOverlay.style.display = 'block';
 	cancelAutoPauseTimer();
+	await fadeInOut(pauseOverlay, 'block');
 }
 
-function resumeRun() {
+async function resumeRun() {
 	isPaused = false;
 	pausedTime += Date.now() - lastPauseStart;
-	pauseOverlay.style.display = 'none';
+	await fadeInOut(pauseOverlay, 'none');
 }
 
 // Show a confirmation dialog with the given message and return a promise that resolves to name of the button pressed: "Yes" or "No".
@@ -299,7 +344,9 @@ async function confirmDialog(messageHtml = "<p>Are you sure?</p>") {
 	});
 }
 
-// Show a message dialog with the given HTML content and an optional postProcess function to run after the dialog is rendered (e.g. to add event listeners to dynamically generated content). Returns a promise that resolves when the dialog is closed.
+// Show a message dialog with the given HTML content and an optional postProcess function to run after the
+// dialog is rendered (e.g. to add event listeners to dynamically generated content). Returns a promise
+// that resolves when the dialog is closed.
 async function showMessageDialog(messageHtml, postProcess) {
 	return new Promise((resolve) => {
 		const messageDialog = document.createElement("dialog");
@@ -346,9 +393,8 @@ async function stopRun() {
 	const distance = calculateTotalDistance();
 	const route = positions;
 
-	resetRun()
-
 	const summary = {
+		date : new Date(startTime), // Store the start time as the date of the run
 		totalTime: totalTime / 1000, // seconds
 		pausedTime: pausedTime / 1000, // seconds
 		activeTime: activeTime / 1000, // seconds
@@ -357,6 +403,9 @@ async function stopRun() {
 		avgPace: distance > 0 ? (activeTime / 60000) / (distance / 1000) : 0 // min/km
 	};
 
+	resetRun();
+
+	// Save the run data and show the summary dialog in parallel, waiting for both to complete before resetting the UI
 	await Promise.all([
 		saveRun(route, summary),
 		showMessageDialog(`<table>
@@ -374,16 +423,18 @@ async function stopRun() {
 }
 
 
-
+// Get all runs from IndexedDB, returning a promise that resolves to an array of run objects
 async function getAllRuns() {
-	return openDB().then(db => {
-		const transaction = db.transaction(['runs'], 'readonly');
-		return transaction.objectStore('runs');
-	}).then(store => new Promise((resolve, reject) => {
+	const db  = await openDB();
+	const transaction = db.transaction(['runs'], 'readonly');
+	const store = transaction.objectStore('runs');
+
+	return new Promise((resolve, reject) => {
 		const request = store.getAll();
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error);
-	}));
+
+		request.onsuccess = (event) => resolve(event.target.result);
+		request.onerror = (event) => reject(event.target.error);
+	});
 }
 
 // Save passed run as a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
@@ -412,6 +463,22 @@ async function saveRunFile(data) {
 
 	saveAs(kmzBlob, filename + ".kmz");	
 }
+
+
+// Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
+async function clearAllRuns() {
+	const db = await openDB();
+	const transaction = db.transaction(['runs'], 'readwrite');
+	const store =  transaction.objectStore('runs');
+
+	return new Promise((resolve, reject) => {
+		const request = store.clear();
+
+		request.onsuccess = (event) => resolve(event.target.result);
+		request.onerror = (event) => reject(event.target.error);
+	});
+}
+
 
 async function showHistory() {
 	// Get all runs and sort runs by date, most recent first
@@ -468,18 +535,6 @@ async function showHistory() {
 
 	showMessageDialog(messageHtml, postProcess);
 };
-
-
-async function clearAllRuns() {
-	return openDB().then(db => {
-		const transaction = db.transaction(['runs'], 'readwrite');
-		return transaction.objectStore('runs');
-	}).then(store => new Promise((resolve, reject) => {
-		const request = store.clear();
-		request.onsuccess = () => resolve();
-		request.onerror = () => reject(request.error);
-	}));
-}
 
 async function clearHistory() {
 	if ("Yes" !== await confirmDialog("<p>Are you sure you want to clear all run history? This action cannot be undone.</p>")) {
