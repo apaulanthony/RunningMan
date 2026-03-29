@@ -1,6 +1,6 @@
 {
   "name": "runningman",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Simple run tracking app",
   "main": "index.js",
   "type": "module",
