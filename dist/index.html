@@ -8,18 +8,18 @@
 		<link rel="manifest" href="./manifest.json" />
 		<link rel="apple-touch-icon" href="./icon-192.png" />
 		<title>🏃 Running Man</title>    
-		<script type="module" crossorigin src="./assets/index-ChBJNSSW.js"></script>
-		<link rel="stylesheet" crossorigin href="./assets/index-DprUwuSU.css">
+		<script type="module" crossorigin src="./assets/index-C4Claj9d.js"></script>
+		<link rel="stylesheet" crossorigin href="./assets/index-0Em6z1xt.css">
 	</head>
 	<body>
+		<div id="start-container">
+			<button id="start">🏃 START</button>
+		</div>
+
 		<div id="map">
 			<div id="timers" style="display: none;">
 				<div id="duration-timer">00:00</div>
 				<div id="pause-timer">Paused: 00:00</div>
-			</div>
-
-			<div id="start-container">
-				<button id="start">🏃 START</button>
 			</div>
 
 			<div id="pause-overlay" style="display: none;">
@@ -27,7 +27,12 @@
 			</div>
 		</div>
 
-		<div id="button-container" style="display: none;">
+		<div id="history-container" class="button-container">
+			<button id="history">HISTORY</button>
+			<button id="clear-history">🚫 CLEAR</button>
+		</div>
+
+		<div id="action-container" class="button-container" style="display: none;">
 			<button id="pause">PAUSE</button>
 			<button id="stop">STOP</button>
 		</div>

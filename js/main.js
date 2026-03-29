@@ -8,6 +8,8 @@ import { Circle as CircleStyle, Fill, Stroke, Style } from 'ol/style.js';
 import { OSM, Vector as VectorSource } from 'ol/source.js';
 import { Tile as TileLayer, Vector as VectorLayer } from 'ol/layer.js';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 // Initialize the map view centered at (0, 0) with a zoom level of 15
 const view = new View({
@@ -25,7 +27,7 @@ const map = new Map({
 	layers: [
 		new TileLayer({
 			source: new OSM(),
-		}),
+		})
 	],
 	target: 'map',
 	view: view,
@@ -98,7 +100,8 @@ function el(id) {
 // UI elements
 const timerContainer = el("timers");
 const startContainer = el("start-container");
-const buttonContainer = el("button-container");
+const historyContainer = el("history-container");
+const actionContainer = el("action-container");
 const pauseOverlay = el("pause-overlay");
 
 function formatTime(seconds) {
@@ -180,6 +183,7 @@ function cancelTimerInterval() {
 	}
 }
 
+// Listen for position changes from the geolocation API
 geolocation.on('change:position', function () {
 	if (!isTracking || isPaused) return;
 
@@ -212,7 +216,7 @@ geolocation.on('change:position', function () {
 });
 
 
-function resetRun() {	
+function resetRun() {
 	isPaused = false;
 	startTime = null;
 	pausedTime = 0;
@@ -227,7 +231,7 @@ function resetRun() {
 function resetUi() {
 	startContainer.style.display = 'block';
 	timerContainer.style.display = 'none';
-	buttonContainer.style.display = 'none';
+	actionContainer.style.display = 'none';
 
 	pathFeature.setGeometry(null);
 	positionFeature.setGeometry(null);
@@ -244,7 +248,7 @@ function startRun() {
 
 	startContainer.style.display = 'none';
 	timerContainer.style.display = 'block';
-	buttonContainer.style.display = 'flex';
+	actionContainer.style.display = 'flex';
 
 	timerInterval = setInterval(updateTimers, 1000);
 }
@@ -262,14 +266,15 @@ function resumeRun() {
 	pauseOverlay.style.display = 'none';
 }
 
-async function confirmDialog(messageHtml = "Are you sure?") {
+// Show a confirmation dialog with the given message and return a promise that resolves to name of the button pressed: "Yes" or "No".
+async function confirmDialog(messageHtml = "<p>Are you sure?</p>") {
 	return new Promise(resolve => {
 		const stopDialog = document.createElement('dialog');
-		stopDialog.addEventListener('close', () => {resolve(stopDialog.returnValue); stopDialog.remove()});
+		stopDialog.addEventListener('close', () => { resolve(stopDialog.returnValue); stopDialog.remove() });
 
-		const p = stopDialog.appendChild(document.createElement('p'));
-		p.className = "message-content";
-		p.innerHTML = messageHtml;
+		const div = stopDialog.appendChild(document.createElement('div'));
+		div.className = "message-content";
+		div.innerHTML = messageHtml;
 
 		const buttonGroup = stopDialog.appendChild(document.createElement('div'));
 		buttonGroup.className = "dialog-controls";
@@ -288,21 +293,22 @@ async function confirmDialog(messageHtml = "Are you sure?") {
 		cancelBtn.addEventListener('click', onClick);
 		cancelBtn.className = "cancel-btn";
 		cancelBtn.textContent = "No";
-								
+
 		stopDialog.returnValue = ""; // Default to empty string if dialog is closed without clicking a button
 		document.body.appendChild(stopDialog).showModal();
 	});
 }
 
-async function showMessageDialog(messageHtml) {
+// Show a message dialog with the given HTML content and an optional postProcess function to run after the dialog is rendered (e.g. to add event listeners to dynamically generated content). Returns a promise that resolves when the dialog is closed.
+async function showMessageDialog(messageHtml, postProcess) {
 	return new Promise((resolve) => {
 		const messageDialog = document.createElement("dialog");
-		messageDialog.addEventListener('close', () => {resolve(messageDialog.returnValue); messageDialog.remove()});
-		 
+		messageDialog.addEventListener('close', () => { resolve(messageDialog.returnValue); messageDialog.remove() });
+
 		if (messageHtml) {
-			const p = messageDialog.appendChild(document.createElement("p"));
-			p.className = "message-content";
-			p.innerHTML = messageHtml;
+			const div = messageDialog.appendChild(document.createElement("div"));
+			div.className = "message-content";
+			div.innerHTML = messageHtml;
 		}
 
 		const buttonGroup = messageDialog.appendChild(document.createElement('div'));
@@ -318,13 +324,18 @@ async function showMessageDialog(messageHtml) {
 		closeBtn.className = "close-btn";
 		closeBtn.textContent = "Close";
 
+		// Run any additional setup after the dialog is rendered, such as adding event listeners to dynamically generated content
+		if (typeof postProcess === "function") {
+			postProcess(messageDialog);
+		}
+
 		messageDialog.returnValue = ""; // Default to empty string if dialog is closed without clicking the button
 		document.body.appendChild(messageDialog).showModal();
 	});
 }
 
 async function stopRun() {
-	if ("Yes" !== await confirmDialog("Are you sure you want to stop the run?")) {
+	if ("Yes" !== await confirmDialog("<p>Are you sure you want to stop the run?</p>")) {
 		return;
 	}
 
@@ -334,7 +345,7 @@ async function stopRun() {
 	const activeTime = totalTime - pausedTime;
 	const distance = calculateTotalDistance();
 	const route = positions;
-	
+
 	resetRun()
 
 	const summary = {
@@ -348,15 +359,134 @@ async function stopRun() {
 
 	await Promise.all([
 		saveRun(route, summary),
-		showMessageDialog(`<span class="label">Total time</span>  ${formatTime(Math.round(summary.totalTime))}
-			<br /><span class="label">Paused time</span> ${formatTime(Math.round(summary.pausedTime))}
-			<br /><span class="label">Active time</span> ${formatTime(Math.round(summary.activeTime))}
-			<br /><span class="label">Distance</span> ${(summary.distance / 1000).toFixed(2)} km
-			<br /><span class="label">Avg pace</span> ${summary.avgPace.toFixed(2)} min/km
-			<br /><span class="label">Avg speed</span> ${summary.avgSpeed.toFixed(2)} km/h`)
+		showMessageDialog(`<table>
+	<tr><th>Date</th><td>${new Date().toLocaleString()}</td></tr>
+	<tr><th>Total Time</th><td>${formatTime(Math.round(summary.totalTime))}</td></tr>
+	<tr><th>Paused Time</th><td>${formatTime(Math.round(summary.pausedTime))}</td></tr>
+	<tr><th>Active Time</th><td>${formatTime(Math.round(summary.activeTime))}</td></tr>
+	<tr><th>Distance (km)</th><td>${(summary.distance / 1000).toFixed(3)}</td></tr>
+	<tr><th>Avg pace (min/km)</th><td>${summary.avgPace ? summary.avgPace.toFixed(2) : 'N/A'}</td></tr>
+	<tr><th>Avg speed (km/h)</th><td>${summary.avgSpeed ? summary.avgSpeed.toFixed(2) : 'N/A'}</td></tr>
+</table>`)
 	]);
 
 	resetUi();
+}
+
+
+
+async function getAllRuns() {
+	return openDB().then(db => {
+		const transaction = db.transaction(['runs'], 'readonly');
+		return transaction.objectStore('runs');
+	}).then(store => new Promise((resolve, reject) => {
+		const request = store.getAll();
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	}));
+}
+
+// Save passed run as a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
+async function saveRunFile(data) {
+	const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+	<Document>
+		<name>Route ${data.date}</name>
+		<Placemark>
+			<LineString>
+				<coordinates>
+					${data.route.map(pos => `${pos[0]},${pos[1]},0`).join(' ')}
+				</coordinates>
+			</LineString>
+		</Placemark>
+	</Document>
+</kml>`;
+
+	const filename = `RunningMan.${data.date.replace(/(\/|:|,)/g, '')}`;
+	const kmlBlob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
+
+	// Convert to kmz (zip file containing the kml) 
+	const zip = new JSZip();
+	zip.file(filename + ".kml", kmlBlob);
+	const kmzBlob = await zip.generateAsync({ type: 'blob' });
+
+	saveAs(kmzBlob, filename + ".kmz");	
+}
+
+async function showHistory() {
+	// Get all runs and sort runs by date, most recent first
+	const allRuns = (await getAllRuns()).filter(run => !!run.route?.length);
+	allRuns.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+	// Generated HTML table of runs
+	const messageHtml = allRuns.length > 0
+		? `<table>
+	<thead>
+		<tr>
+			<th>Date</th>
+			<th>Total Time</th>
+			<th>Paused Time</th>
+			<th>Active Time</th>
+			<th>Distance (km)</th>
+			<th>Avg Pace (min/km)</th>
+			<th>Avg Speed (km/h)</th>
+			<th>Download</th>
+		</tr>
+	</thead>
+	<tbody>
+		${allRuns.map(run => `
+			<tr>
+				<td>${new Date(run.date).toLocaleString()}</td>
+				<td>${formatTime(Math.round(run.totalTime))}</td>
+				<td>${formatTime(Math.round(run.pausedTime))}</td>
+				<td>${formatTime(Math.round(run.activeTime))}</td>
+				<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
+				<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
+				<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
+				<td><button class="view-route" data-route='${JSON.stringify({ route: run.route, date: run.date })}'>💾</button></td>
+			</tr>
+		`).join('')}
+	</tbody>
+</table>`
+		: "<p>No runs recorded yet.</p>";
+
+	// Add event listeners for "View Route" buttons after the dialog is rendered
+	const postProcess = (dialog) => {
+		dialog.querySelectorAll('.view-route').forEach(button => {
+			button.addEventListener('click', () => {
+				const data = JSON.parse(button.getAttribute('data-route'));
+
+				// Nice to plot the route but can't see under the dialog to the map
+				// pathFeature.setGeometry(new LineString(route.map(pos => fromLonLat(pos))));
+				// view.fit(pathFeature.getGeometry(), { padding: [50, 50, 50, 50] });
+
+				// Instead, generate a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
+				saveRunFile(data);
+			});
+		});
+	};
+
+	showMessageDialog(messageHtml, postProcess);
+};
+
+
+async function clearAllRuns() {
+	return openDB().then(db => {
+		const transaction = db.transaction(['runs'], 'readwrite');
+		return transaction.objectStore('runs');
+	}).then(store => new Promise((resolve, reject) => {
+		const request = store.clear();
+		request.onsuccess = () => resolve();
+		request.onerror = () => reject(request.error);
+	}));
+}
+
+async function clearHistory() {
+	if ("Yes" !== await confirmDialog("<p>Are you sure you want to clear all run history? This action cannot be undone.</p>")) {
+		return;
+	}
+
+	await clearAllRuns();
 }
 
 // Event listeners for control buttons
@@ -366,17 +496,29 @@ el("start").addEventListener('click', function () {
 	}
 });
 
-el("stop").addEventListener('click', function () {
-	stopRun();
+
+el("history").addEventListener('click', function () {
+	showHistory();
 });
+
+el("clear-history").addEventListener('click', function () {
+	clearHistory();
+});
+
 
 el("pause").addEventListener('click', function () {
 	pauseRun();
 });
 
+el("stop").addEventListener('click', function () {
+	stopRun();
+});
+
+
 el("resume").addEventListener('click', function () {
 	resumeRun();
 });
+
 
 // Register service worker for offline support
 if ('serviceWorker' in navigator) {

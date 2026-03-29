@@ -9,5 +9,5 @@ I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/example
 
 ## ToDo:
 - [x] ~~Make PWA~~
-- [ ] Display captured run data. Implement download/clear
+- [ ] ~~Display captured run data. Implement download~~ /clear
 - [ ] Config panel 
