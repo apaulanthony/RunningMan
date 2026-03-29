@@ -9,7 +9,7 @@ import { OSM, Vector as VectorSource } from 'ol/source.js';
 import { Tile as TileLayer, Vector as VectorLayer } from 'ol/layer.js';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
 
-// Initialize map and geolocation
+// Initialize the map view centered at (0, 0) with a zoom level of 15
 const view = new View({
 	center: fromLonLat([0, 0]),
 	zoom: 15,
@@ -18,14 +18,6 @@ const view = new View({
 // Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
 navigator?.geolocation?.getCurrentPosition?.((position) => {
 	view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude]));
-});
-
-// Geolocation with high accuracy enabled and projection set to match the map view
-const geolocation = new Geolocation({
-	trackingOptions: {
-		enableHighAccuracy: true,
-	},
-	projection: view.getProjection(),
 });
 
 // Create the map with a base OSM layer and the defined view
@@ -37,6 +29,14 @@ const map = new Map({
 	],
 	target: 'map',
 	view: view,
+});
+
+// Geolocation with high accuracy enabled and projection set to match the map view
+const geolocation = new Geolocation({
+	trackingOptions: {
+		enableHighAccuracy: true,
+	},
+	projection: view.getProjection(),
 });
 
 // Features for current position and path, with styles
