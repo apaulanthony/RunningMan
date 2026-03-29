@@ -9,11 +9,26 @@ import { OSM, Vector as VectorSource } from 'ol/source.js';
 import { Tile as TileLayer, Vector as VectorLayer } from 'ol/layer.js';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
 
+// Initialize map and geolocation
 const view = new View({
 	center: fromLonLat([0, 0]),
 	zoom: 15,
 });
 
+// Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
+navigator?.geolocation?.getCurrentPosition?.((position) => {
+	view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude]));
+});
+
+// Geolocation with high accuracy enabled and projection set to match the map view
+const geolocation = new Geolocation({
+	trackingOptions: {
+		enableHighAccuracy: true,
+	},
+	projection: view.getProjection(),
+});
+
+// Create the map with a base OSM layer and the defined view
 const map = new Map({
 	layers: [
 		new TileLayer({
@@ -24,25 +39,7 @@ const map = new Map({
 	view: view,
 });
 
-const geolocation = new Geolocation({
-	trackingOptions: {
-		enableHighAccuracy: true,
-	},
-	projection: view.getProjection(),
-});
-
-let isTracking = false;
-let isPaused = false;
-
-let startTime = null;
-let pausedTime = 0;
-let lastPauseStart = null;
-let positions = [];
-let lastPosition = null;
-
-let autoPauseTimer = null;
-let timerInterval = null;
-
+// Features for current position and path, with styles
 const positionFeature = new Feature();
 positionFeature.setStyle(
 	new Style({
@@ -69,19 +66,36 @@ pathFeature.setStyle(
 	}),
 );
 
+// Vector source and layer to hold the position and path features
 const vectorSource = new VectorSource({
 	features: [positionFeature, pathFeature],
 });
 
+// Add the vector layer to the map
 new VectorLayer({
 	map: map,
 	source: vectorSource,
 });
 
+// State variables to track the run status, timing, and positions
+let isTracking = false;
+let isPaused = false;
+
+let startTime = null;
+let pausedTime = 0;
+let lastPauseStart = null;
+let positions = [];
+let lastPosition = null;
+
+let autoPauseTimer = null;
+let timerInterval = null;
+
+// Helper function to get element by ID
 function el(id) {
 	return document.getElementById(id);
 }
 
+// UI elements
 const timerContainer = el("timers");
 const startContainer = el("start-container");
 const buttonContainer = el("button-container");
@@ -345,7 +359,7 @@ async function stopRun() {
 	resetUi();
 }
 
-
+// Event listeners for control buttons
 el("start").addEventListener('click', function () {
 	if (!isTracking) {
 		startRun();
