@@ -377,3 +377,17 @@ el("pause").addEventListener('click', function () {
 el("resume").addEventListener('click', function () {
 	resumeRun();
 });
+
+// Register service worker for offline support
+if ('serviceWorker' in navigator) {
+	navigator.serviceWorker.register('sw.js').then((registration) => {
+		console.log('Service Worker registered:', registration);
+	}).catch((error) => {
+		console.log('Service Worker registration failed:', error);
+	});
+}
+
+// Register the shortcut for starting a run when the app is launched with ?start=true
+if (!isTracking && new URLSearchParams(navigator.location.search).get("start") === "true") {
+	startRun();
+}

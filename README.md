@@ -8,6 +8,6 @@ I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/example
 
 
 ## ToDo:
-- Make PWA
-- Display captured run data. Implement download/clear
-- Config panel 
+- [x] ~~Make PWA~~
+- [ ] Display captured run data. Implement download/clear
+- [ ] Config panel 
