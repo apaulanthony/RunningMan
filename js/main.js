@@ -388,6 +388,6 @@ if ('serviceWorker' in navigator) {
 }
 
 // Register the shortcut for starting a run when the app is launched with ?start=true
-if (!isTracking && new URLSearchParams(navigator.location.search).get("start") === "true") {
+if (!isTracking && new URLSearchParams(location.search).get("start") === "true") {
 	startRun();
 }
