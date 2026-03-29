@@ -4,6 +4,9 @@ As proof of principle, I've created a simple running app that tracks your locati
 
 https://apaulanthony.github.io/RunningMan/dist/index.html
 
+I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/examples/geolocation.html) as a starting point for the project, introducing me to [Vite](https://www.npmjs.com/package/vite). I particularly appreciate Vite's simple approach to bunding of ESM and handling of SASS.
+
+
 ## ToDo:
 - Make PWA
 - Display captured run data. Implement download/clear
