@@ -248,67 +248,69 @@ function resumeRun() {
 	pauseOverlay.style.display = 'none';
 }
 
-async function confirmStop() {
-	return new Promise((resolve) => {
-		const stopDialog = el("stop-dialog");
-		const stopConfirm = el("stop-confirm");
-		const stopCancel = el("stop-cancel");
+async function confirmDialog(messageHtml = "Are you sure?") {
+	return new Promise(resolve => {
+		const stopDialog = document.createElement('dialog');
+		stopDialog.addEventListener('close', () => {resolve(stopDialog.returnValue); stopDialog.remove()});
 
-		stopDialog.showModal();
+		const p = stopDialog.appendChild(document.createElement('p'));
+		p.className = "message-content";
+		p.innerHTML = messageHtml;
 
-		const clean = () => {
-			stopConfirm.removeEventListener('click', onConfirm);
-			stopCancel.removeEventListener('click', onCancel);
-		};
+		const buttonGroup = stopDialog.appendChild(document.createElement('div'));
+		buttonGroup.className = "dialog-controls";
 
-		const onConfirm = () => {
-			clean();
-			stopDialog.close();
-			resolve(true);
+		const onClick = function () {
+			stopDialog.returnValue = this.textContent;
+			stopDialog.close()
 		}
 
-		const onCancel = () => {
-			clean();
-			stopDialog.close();
-			resolve(false);
-		}
+		const confirmBtn = buttonGroup.appendChild(document.createElement('button'));
+		confirmBtn.addEventListener('click', onClick);
+		confirmBtn.className = "confirm-btn";
+		confirmBtn.textContent = "Yes";
 
-		stopConfirm.addEventListener('click', onConfirm);
-		stopCancel.addEventListener('click', onCancel);
+		const cancelBtn = buttonGroup.appendChild(document.createElement('button'));
+		cancelBtn.addEventListener('click', onClick);
+		cancelBtn.className = "cancel-btn";
+		cancelBtn.textContent = "No";
+								
+		stopDialog.returnValue = ""; // Default to empty string if dialog is closed without clicking a button
+		document.body.appendChild(stopDialog).showModal();
 	});
 }
 
-async function showSummary(summary) {
+async function showMessageDialog(messageHtml) {
 	return new Promise((resolve) => {
-		const summaryDialog = el("summary-dialog");
-		const summaryContent = el("summary-content");
-		const summaryClose = el("summary-close");
-
-		summaryContent.innerHTML = `<span class="label">Total time</span>  ${formatTime(Math.round(summary.totalTime))}
-			<br /><span class="label">Paused time</span> ${formatTime(Math.round(summary.pausedTime))}
-			<br /><span class="label">Active time</span> ${formatTime(Math.round(summary.activeTime))}
-			<br /><span class="label">Distance</span> ${(summary.distance / 1000).toFixed(2)} km
-			<br /><span class="label">Avg pace</span> ${summary.avgPace.toFixed(2)} min/km
-			<br /><span class="label">Avg speed</span> ${summary.avgSpeed.toFixed(2)} km/h`;
-
-		summaryDialog.showModal();
-
-		const clean = () => {
-			summaryClose.removeEventListener('click', onClose);
-		};
-
-		const onClose = () => {
-			clean();
-			summaryDialog.close();
-			resolve();
+		const messageDialog = document.createElement("dialog");
+		messageDialog.addEventListener('close', () => {resolve(messageDialog.returnValue); messageDialog.remove()});
+		 
+		if (messageHtml) {
+			const p = messageDialog.appendChild(document.createElement("p"));
+			p.className = "message-content";
+			p.innerHTML = messageHtml;
 		}
-			
-		summaryClose.addEventListener('click', onClose);		
+
+		const buttonGroup = messageDialog.appendChild(document.createElement('div'));
+		buttonGroup.className = "dialog-controls";
+
+		const onClick = function () {
+			messageDialog.returnValue = this.textContent;
+			messageDialog.close()
+		}
+
+		const closeBtn = buttonGroup.appendChild(document.createElement('button'));
+		closeBtn.addEventListener('click', onClick);
+		closeBtn.className = "close-btn";
+		closeBtn.textContent = "Close";
+
+		messageDialog.returnValue = ""; // Default to empty string if dialog is closed without clicking the button
+		document.body.appendChild(messageDialog).showModal();
 	});
 }
 
 async function stopRun() {
-	if (!await confirmStop()) {
+	if ("Yes" !== await confirmDialog("Are you sure you want to stop the run?")) {
 		return;
 	}
 
@@ -317,6 +319,9 @@ async function stopRun() {
 	const totalTime = endTime - startTime;
 	const activeTime = totalTime - pausedTime;
 	const distance = calculateTotalDistance();
+	const route = positions;
+	
+	resetRun()
 
 	const summary = {
 		totalTime: totalTime / 1000, // seconds
@@ -328,8 +333,13 @@ async function stopRun() {
 	};
 
 	await Promise.all([
-		saveRun(positions, summary).then(resetRun),
-		showSummary(summary)
+		saveRun(route, summary),
+		showMessageDialog(`<span class="label">Total time</span>  ${formatTime(Math.round(summary.totalTime))}
+			<br /><span class="label">Paused time</span> ${formatTime(Math.round(summary.pausedTime))}
+			<br /><span class="label">Active time</span> ${formatTime(Math.round(summary.activeTime))}
+			<br /><span class="label">Distance</span> ${(summary.distance / 1000).toFixed(2)} km
+			<br /><span class="label">Avg pace</span> ${summary.avgPace.toFixed(2)} min/km
+			<br /><span class="label">Avg speed</span> ${summary.avgSpeed.toFixed(2)} km/h`)
 	]);
 
 	resetUi();

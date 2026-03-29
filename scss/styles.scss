@@ -135,7 +135,7 @@ dialog {
 		font-size: 1rem;
 		text-align: center;
 
-		&.summary-content {
+		&.message-content {
 			text-align: left;
 			margin-bottom: 10px;
 
@@ -154,24 +154,20 @@ dialog {
 	.dialog-controls {
 		display: flex;
 		justify-content: space-around;
+	}
 
-		.confirm-btn,
-		.cancel-btn {
-			padding: 10px 20px;
-			font-size: 1rem;
-			border: none;
-			border-radius: 8px;
-			cursor: pointer;
-		}
+	button {
+		padding: 10px 20px;
+		font-size: 1rem;
+		border: none;
+		border-radius: 8px;
+		background: #757575;
+		color: #fff;
+		cursor: pointer;
 
-		.confirm-btn {
+		&.confirm-btn {
 			background: tomato;
 			color: #fff;
 		}
-
-		.cancel-btn {
-			background: #757575;
-			color: #fff;
-		}
-	}
+	}	
 }
