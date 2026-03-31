@@ -6,7 +6,9 @@ https://apaulanthony.github.io/RunningMan/dist/index.html
 
 I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/examples/geolocation.html) as a starting point for the project, introducing me to [Vite](https://www.npmjs.com/package/vite). I particularly appreciate Vite's simple approach to bunding of ESM and handling of SASS.
 
-![RunningMan Logo][dist/icon-maskable-96.png]
+![RunningMan Logo](dist/icon-96.png)
+![Screenshot 1](dist/screenshot-narrow.png)
+![Screenshot 2](dist/screenshot-narrow-2.png)
 
 ## ToDo:
 - [X] ~~Make PWA~~
