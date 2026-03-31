@@ -165,21 +165,64 @@ async function openDB() {
 }
 
 // Save a run to IndexedDB, returning a promise that resolves to the ID of the saved run
-async function saveRun(route, summary) {
-	const db = await openDB();
-	const transaction = db.transaction(['runs'], 'readwrite');
-	const store = transaction.objectStore('runs');
-	
-	return new Promise((resolve, reject) => {
+async function saveRun(route, summary) {	
+	return new Promise(async (resolve, reject) => {
+		const db = await openDB();
+		db.onerror = (event) => reject(event.target.error);
+		
 		// Store the route and summary data together, along with a default timestamp for
 		// sorting if one isn't provided in the summary (the difference being startTime vs endTime,
 		// but either works for sorting runs chronologically)
-		const request = store.add({date: new Date(), route: route, ...summary});
+		const request = db.transaction(['runs'], 'readwrite')
+		 	.objectStore('runs')
+			.add({date: new Date(), route: route, ...summary});
 
 		request.onsuccess = (event) => resolve(event.target.result);
-		request.onerror = (event) => reject(event.target.error);
 	});
 }
+
+// Get a run by ID from IndexedDB, returning a promise that resolves to the run object
+async function getRun(id) {
+	return new Promise(async (resolve, reject) => {
+		const db = await openDB();
+		db.onerror = (event) => reject(event.target.error);
+
+		const request = db.transaction(['runs'], 'readonly')
+			.objectStore('runs')
+			.get(id)
+
+		request.onsuccess = (event) => resolve(event.target.result);		
+	});
+}
+
+// Delete a run by ID from IndexedDB, returning a promise that resolves when the operation is complete
+async function deleteRun(id) {	
+	return new Promise(async (resolve, reject) => {
+		const db = await openDB();
+		db.onerror = (event) => reject(event.target.error);
+
+		const request  = db.transaction(['runs'], 'readwrite')
+			.objectStore('runs')
+			.delete(id);
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+// Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
+async function deleteAllRuns() {	
+	return new Promise(async (resolve, reject) => {
+		const db = await openDB();
+		db.onerror = (event) => reject(event.target.error);
+		
+		const request = db.transaction(['runs'], 'readwrite')
+			.objectStore('runs')
+			.clear();
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
 
 function cancelAutoPauseTimer() {
 	if (autoPauseTimer) {
@@ -465,21 +508,6 @@ async function saveRunFile(data) {
 }
 
 
-// Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
-async function clearAllRuns() {
-	const db = await openDB();
-	const transaction = db.transaction(['runs'], 'readwrite');
-	const store =  transaction.objectStore('runs');
-
-	return new Promise((resolve, reject) => {
-		const request = store.clear();
-
-		request.onsuccess = (event) => resolve(event.target.result);
-		request.onerror = (event) => reject(event.target.error);
-	});
-}
-
-
 async function showHistory() {
 	// Get all runs and sort runs by date, most recent first
 	const allRuns = (await getAllRuns()).filter(run => !!run.route?.length);
@@ -497,7 +525,9 @@ async function showHistory() {
 			<th>Distance (km)</th>
 			<th>Avg Pace (min/km)</th>
 			<th>Avg Speed (km/h)</th>
+			<th>View</th>
 			<th>Download</th>
+			<th>Remove</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -510,7 +540,9 @@ async function showHistory() {
 				<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
 				<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
 				<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
-				<td><button class="view-route" data-route='${JSON.stringify({ route: run.route, date: run.date })}'>💾</button></td>
+				<!-- <td><button class="view-route" data-id='${JSON.stringify(run.id)}'>👁️</button></td> -->
+				<td><button class="save-route" data-id='${JSON.stringify(run.id)}'>💾</button></td>
+				<td><button class="remove-run" data-id='${JSON.stringify(run.id)}'>🗑️</button></td>
 			</tr>
 		`).join('')}
 	</tbody>
@@ -519,18 +551,57 @@ async function showHistory() {
 
 	// Add event listeners for "View Route" buttons after the dialog is rendered
 	const postProcess = (dialog) => {
-		dialog.querySelectorAll('.view-route').forEach(button => {
-			button.addEventListener('click', () => {
-				const data = JSON.parse(button.getAttribute('data-route'));
 
-				// Nice to plot the route but can't see under the dialog to the map
-				// pathFeature.setGeometry(new LineString(route.map(pos => fromLonLat(pos))));
-				// view.fit(pathFeature.getGeometry(), { padding: [50, 50, 50, 50] });
+		// dialog.querySelectorAll('.view-route').forEach(button => {
+		// 	button.addEventListener('click', async () => {
+		// 		const id = JSON.parse(button.getAttribute('data-id')),
+		// 			data = await getRun(id);
 
-				// Instead, generate a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
+		// 		//Render the route on the map and zoom to fit the route.
+		// 		pathFeature.setGeometry(new LineString(data.route.map(pos => fromLonLat(pos))));
+		// 		view.fit(pathFeature.getGeometry(), { padding: [50, 50, 50, 50] });
+
+		// 		// Close the dialog to reveal the map with the selected route
+		// 		dialog.close();
+		// 	});
+		// });
+
+		dialog.querySelectorAll('.save-route').forEach(button => {
+			button.addEventListener('click', async () => {
+				const id = JSON.parse(button.getAttribute('data-id')),
+					data = await getRun(id);
+
+				// Generate and trigger download of the run data as a kml/kmz file
 				saveRunFile(data);
 			});
 		});
+
+		dialog.querySelectorAll('.remove-run').forEach(button => {
+			button.addEventListener('click', async () => {
+				const id = JSON.parse(button.getAttribute('data-id')),
+					data = await getRun(id);
+
+				if ("Yes" !== await confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {				
+					return;
+				}
+
+				await deleteRun(id);
+
+				// Start with the button element and traverse up the DOM tree until we find the <tr> ancestor
+				// Remove it from the table to immediately reflect the deletion in the UI without needing to refresh the entire history dialog
+				let tr = null;
+				for (let node = button; node && !tr; node = node.parentElement) {
+					if (node.tagName === "TR") {
+						tr = node;
+						break;
+					}
+				}		
+
+				if (tr)	{
+					tr.remove()
+				}				
+			});
+		});		
 	};
 
 	showMessageDialog(messageHtml, postProcess);
@@ -541,7 +612,7 @@ async function clearHistory() {
 		return;
 	}
 
-	await clearAllRuns();
+	deleteAllRuns();
 }
 
 // Event listeners for control buttons
