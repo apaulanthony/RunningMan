@@ -25,7 +25,7 @@ var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=
 		</LineString>
 	</Placemark>
 </Document>
-</kml>`,n=`RunningMan.${e.date.replace(/(\/|:|,)/g,``)}`,r=new Blob([t],{type:`application/vnd.google-earth.kml+xml`}),i=new ff.default;i.file(n+`.kml`,r),(0,pf.saveAs)(await i.generateAsync({type:`blob`}),n+`.kmz`)}async function rp(e){let t=await Gf(e);ep(t.length>0?`<table>
+</kml>`,n=`RunningMan.${new Date(e.date).toISOString().replace(/(\/|:|,)/g,``)}`,r=new Blob([t],{type:`application/vnd.google-earth.kml+xml`}),i=new ff.default;i.file(n+`.kml`,r),(0,pf.saveAs)(await i.generateAsync({type:`blob`}),n+`.kmz`)}async function rp(e){let t=await Gf(e);ep(t.length>0?`<table>
 <thead>
 	<tr>
 		<th>Date</th>

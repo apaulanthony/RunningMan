@@ -633,7 +633,7 @@ async function saveRunFile(data) {
 </Document>
 </kml>`;
 
-	const filename = `RunningMan.${data.date.replace(/(\/|:|,)/g, '')}`;
+	const filename = `RunningMan.${new Date(data.date).toISOString().replace(/(\/|:|,)/g, '')}`;
 	const kmlBlob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
 
 	// Convert to kmz (zip file containing the kml) 
