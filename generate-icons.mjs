@@ -9,8 +9,8 @@ async function generateIcons() {
 	// Create SVG with emoji
 	const createSvg = (size) => `
 		<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-			<rect width="${size}" height="${size}" fill="#22c55e"/>
-			<text 
+			<rect width="${size}" height="${size}" fill="#6ec522"/>
+			<text
 				x="50%" 
 				y="50%" 
 				text-anchor="middle" 
@@ -22,42 +22,16 @@ async function generateIcons() {
 			</text>
 		</svg>
 	`;
-	
+
 	for (const size of sizes) {
 		const svgString = createSvg(size);
 
 		// Regular icon
 		await sharp(Buffer.from(svgString))
 			.png()
-			.toFile(`${publicDir}/icon-${size}.png`);		
+			.toFile(`${publicDir}/icon-${size}.png`);
 		console.log(`✓ Generated icon-${size}.png`);
 
-		// Canvas based implementation
-		// const img = new Promise(async (resolve, reject) => {
-		// 	const img = new Image(size, size);
-		//
-		// 	img.onerror  = e => {
-		// 		URL.revokeObjectURL(img.src);
-		// 		reject(e);
-		// 	}
-		// 	img.onload = () => {
-		// 		URL.revokeObjectURL(img.src);
-		// 		resolve(img)
-		// 	};
-		//				
-		// 	img.src = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }));
-		// });
-		//
-		// const canvas = document.createElement('canvas');
-		// canvas.height = img.height;
-		// canvas.width = img.width;
-		// const ctx = canvas.getContext("2d");
-		// ctx.drawImage(img, 0, 0, img.width, img.height);
-		//
-		// const blob = await new Promise(resolve => canvas.toBlob(resolve));
-		// fs.writeFile(`${publicDir}/icon-${size}.png`, blob, err => {throw err});
-		
-		
 		// Maskable icon (solid background)
 		const maskableSvg = `
 			<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -75,11 +49,11 @@ async function generateIcons() {
 				</text>
 			</svg>
 		`;
-		
+
 		await sharp(Buffer.from(maskableSvg))
 			.png()
 			.toFile(`${publicDir}/icon-maskable-${size}.png`);
-		
+
 		console.log(`✓ Generated icon-maskable-${size}.png`);
 	}
 

@@ -10,6 +10,7 @@ import { Tile as TileLayer, Vector as VectorLayer } from 'ol/layer.js';
 import { fromLonLat, toLonLat } from 'ol/proj.js';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import packageJson from '../package.json';
 
 // Initialize the map view centered at (0, 0) with a zoom level of 15
 const view = new View({
@@ -18,20 +19,7 @@ const view = new View({
 });
 
 // Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
-navigator?.geolocation?.getCurrentPosition?.((position) => {
-	view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude]));
-});
-
-// Create the map with a base OSM layer and the defined view
-const map = new Map({
-	layers: [
-		new TileLayer({
-			source: new OSM(),
-		})
-	],
-	target: 'map',
-	view: view,
-});
+new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject)).then(position => view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude])));
 
 // Geolocation with high accuracy enabled and projection set to match the map view
 const geolocation = new Geolocation({
@@ -68,15 +56,22 @@ pathFeature.setStyle(
 	}),
 );
 
-// Vector source and layer to hold the position and path features
-const vectorSource = new VectorSource({
-	features: [positionFeature, pathFeature],
-});
 
+// Create the map with a base OSM layer and the defined view
 // Add the vector layer to the map
 new VectorLayer({
-	map: map,
-	source: vectorSource,
+	map: new Map({
+		layers: [
+			new TileLayer({
+				source: new OSM(),
+			})
+		],
+		target: 'map',
+		view: view,
+	}),
+	source: new VectorSource({
+		features: [positionFeature, pathFeature],
+	}),
 });
 
 // State variables to track the run status, timing, and positions
@@ -104,6 +99,7 @@ const historyContainer = el("history-container");
 const actionContainer = el("action-container");
 const pauseOverlay = el("pause-overlay");
 
+
 function formatTime(seconds) {
 	const mins = Math.floor(seconds / 60);
 	const secs = seconds % 60;
@@ -125,7 +121,16 @@ function updateTimers() {
 	}
 }
 
-// Haversine formula to calculate distance between two lat/lon points in metres https://en.wikipedia.org/wiki/Haversine_formula
+
+/**
+ * Haversine formula to calculate distance between two lat/lon points https://en.wikipedia.org/wiki/Haversine_formula 
+ * 
+ * @param {*} lat1 
+ * @param {*} lon1 
+ * @param {*} lat2 
+ * @param {*} lon2 
+ * @returns distance in metres
+ */
 function haversineDistance(lat1, lon1, lat2, lon2) {
 	const R = 6371; // Radius of the Earth in km
 	const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -147,82 +152,6 @@ function calculateTotalDistance() {
 	return distance;
 }
 
-// Open (or create) the IndexedDB database and object store for runs, returning a promise that resolves to the database instance
-async function openDB() {
-	return new Promise((resolve, reject) => {
-		const request = indexedDB.open('RunningManDB', 1);
-
-		request.onupgradeneeded = (event) => {
-			const db = event.target.result;
-			if (!db.objectStoreNames.contains('runs')) {
-				db.createObjectStore('runs', { keyPath: 'id', autoIncrement: true });
-			}
-		};
-
-		request.onsuccess = (event) => resolve(event.target.result);
-		request.onerror = (event) => reject(event.target.error);
-	});
-}
-
-// Save a run to IndexedDB, returning a promise that resolves to the ID of the saved run
-async function saveRun(route, summary) {	
-	return new Promise(async (resolve, reject) => {
-		const db = await openDB();
-		db.onerror = (event) => reject(event.target.error);
-		
-		// Store the route and summary data together, along with a default timestamp for
-		// sorting if one isn't provided in the summary (the difference being startTime vs endTime,
-		// but either works for sorting runs chronologically)
-		const request = db.transaction(['runs'], 'readwrite')
-		 	.objectStore('runs')
-			.add({date: new Date(), route: route, ...summary});
-
-		request.onsuccess = (event) => resolve(event.target.result);
-	});
-}
-
-// Get a run by ID from IndexedDB, returning a promise that resolves to the run object
-async function getRun(id) {
-	return new Promise(async (resolve, reject) => {
-		const db = await openDB();
-		db.onerror = (event) => reject(event.target.error);
-
-		const request = db.transaction(['runs'], 'readonly')
-			.objectStore('runs')
-			.get(id)
-
-		request.onsuccess = (event) => resolve(event.target.result);		
-	});
-}
-
-// Delete a run by ID from IndexedDB, returning a promise that resolves when the operation is complete
-async function deleteRun(id) {	
-	return new Promise(async (resolve, reject) => {
-		const db = await openDB();
-		db.onerror = (event) => reject(event.target.error);
-
-		const request  = db.transaction(['runs'], 'readwrite')
-			.objectStore('runs')
-			.delete(id);
-
-		request.onsuccess = (event) => resolve(event.target.result);
-	});
-}
-
-// Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
-async function deleteAllRuns() {	
-	return new Promise(async (resolve, reject) => {
-		const db = await openDB();
-		db.onerror = (event) => reject(event.target.error);
-		
-		const request = db.transaction(['runs'], 'readwrite')
-			.objectStore('runs')
-			.clear();
-
-		request.onsuccess = (event) => resolve(event.target.result);
-	});
-}
-
 
 function cancelAutoPauseTimer() {
 	if (autoPauseTimer) {
@@ -238,7 +167,10 @@ function cancelTimerInterval() {
 	}
 }
 
-// Listen for position changes from the geolocation API
+
+/**
+ * Listen for position changes from the geolocation API
+ */
 geolocation.on('change:position', function () {
 	if (!isTracking || isPaused) return;
 
@@ -271,6 +203,201 @@ geolocation.on('change:position', function () {
 });
 
 
+/**
+ * Convert a sematic versioning string into an 32-bit integer.
+ * 
+ * Make sure the input string is compatible with the standard found
+ * at semver.org. Since this only uses 10-bit per major/minor/patch version,
+ * the highest possible SemVer string would be 1023.1023.1023.
+ * @param  {string} version SemVer string
+ * @return {number}         Numeric version
+ */
+function convertVersionToInt32(version) {
+	// Split a given version string into three parts.
+	let parts = version.split('.');
+
+	// Check if we got exactly three parts, otherwise throw an error.
+	if (parts.length !== 3) {
+		throw new Error('Received invalid version string');
+	}
+
+	// Make sure that no part is larger than 1023 or else it
+	// won't fit into a 32-bit integer.
+	parts.forEach((part) => {
+		if (part >= 1024) {
+			throw new Error(`Version string invalid, ${part} is too large`);
+		}
+	});
+
+	// Let's create a new number which we will return later on
+	let numericVersion = 0;
+
+	// Shift all parts either 0, 10 or 20 bits to the left.
+	for (let i = 0; i < 3; i++) {
+		numericVersion |= parts[i] << i * 10;
+	}
+
+	return numericVersion;
+};
+
+
+/**
+ * Open (or create) the IndexedDB database and object store for runs
+ * 
+ * @returns {Promise<IDBDatabase>}
+ */
+async function openDB() {
+	return new Promise((resolve, reject) => {
+		// Read application version number from package.json and convert a sematic versioning string into an 32-bit integer.		
+		const request = indexedDB.open('RunningManDB', convertVersionToInt32(packageJson.version));
+		request.onerror = (event) => reject(event.target.error);
+
+		request.onupgradeneeded = (event) => {
+			const db = event.target.result;
+			const transaction = event.target.transaction;
+
+			const runsStore = db.objectStoreNames.contains('runs') ? transaction.objectStore('runs') : db.createObjectStore('runs', { keyPath: 'id', autoIncrement: true });
+
+			if (!runsStore.indexNames.contains('date')) {
+				runsStore.createIndex('date', 'date', { unique: false });
+			}
+		};
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+
+/**
+ * Save a run to IndexedDB, returning a promise that resolves to the ID of the saved run
+ * 
+ * @param {array<array<number>>} route 
+ * @param {object} summary 
+ * @returns 
+ */
+async function saveRun(route, summary) {
+	const db = await openDB();
+
+	return new Promise(async (resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		// Store the route and summary data together, along with a default timestamp for
+		// sorting if one isn't provided in the summary (the difference being startTime vs endTime,
+		// but either works for sorting runs chronologically)
+		const request = db.transaction(['runs'], 'readwrite')
+			.objectStore('runs')
+			.add({ date: new Date(), route: route, ...summary });
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+/**
+ * Get a run by ID from IndexedDB
+ * 
+ * @param {BigInteger} id 
+ * @returns {Promise<Run>} 
+ */
+async function getRun(id) {
+	const db = await openDB();
+
+	return new Promise(async (resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		const request = db.transaction(['runs'], 'readonly')
+			.objectStore('runs')
+			.get(id)
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+/**
+ * Delete a run by ID from IndexedDB
+ * 
+ * @param {BigInteger} id 
+ * @returns {Promise<void>} resolves when the operation is complete
+ */
+async function deleteRun(id) {
+	const db = await openDB();
+
+	return new Promise((resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		const request = db.transaction(['runs'], 'readwrite')
+			.objectStore('runs')
+			.delete(id);
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+/**
+ * Get all runs from IndexedDB, returning a promise that resolves to an array of run objects
+ * 
+ * @returns {Promise<array<Run>>} 
+ */
+async function getAllRuns() {
+	const db = await openDB();
+
+	return new Promise((resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		const request = db.transaction(['runs'], 'readonly')
+			.objectStore('runs')
+			.getAll();
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+
+/**
+ * Get all runs from IndexedDB, sorted by date
+ * 
+ * @param {boolean} decending
+ * @returns {Promise<array<Run>>}
+ */
+async function getAllRunsByDate(decending) {
+	const db = await openDB();
+
+	return new Promise((resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		// Get all runs from the 'runs' object store using "date" index
+		const request = db.transaction(['runs'])
+			.objectStore('runs')
+			.index('date')
+			.getAll();
+
+		request.onsuccess = (event) => {
+			const runs = event.target.result;
+			resolve(decending ? runs.reverse() : runs)
+		};
+	});
+}
+
+
+/**
+ * Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
+ * 
+ * @returns {Promise<array<void>>} 
+ */
+async function deleteAllRuns() {
+	const db = await openDB();
+
+	return new Promise((resolve, reject) => {
+		db.onerror = (event) => reject(event.target.error);
+
+		const request = db.transaction(['runs'], 'readwrite')
+			.objectStore('runs')
+			.clear();
+
+		request.onsuccess = (event) => resolve(event.target.result);
+	});
+}
+
+
 function resetRun() {
 	isPaused = false;
 	startTime = null;
@@ -284,6 +411,12 @@ function resetRun() {
 }
 
 
+/**
+ * Try to fade panels in and out gracefully so that the animation is seen before toggling the display to hide the element entirely.
+ * @param {HTMLElement} element 
+ * @param {string} display 
+ * @returns 
+ */
 async function fadeInOut(element, display = "block") {
 	const delay = 0.25; // Match the CSS transition duration
 	element.style.transition = `opacity ${delay}s ease-in-out`;
@@ -303,7 +436,7 @@ async function fadeInOut(element, display = "block") {
 			element.style.display = display;
 		}).then(() => {
 			element.style.opacity = 1;
-		
+
 			return new Promise(resolve => { setTimeout(resolve, delay * 1000) });
 		});
 	}
@@ -354,7 +487,11 @@ async function resumeRun() {
 	await fadeInOut(pauseOverlay, 'none');
 }
 
-// Show a confirmation dialog with the given message and return a promise that resolves to name of the button pressed: "Yes" or "No".
+/**
+ * Show a confirmation dialog with the given message and return a promise that resolves to name of the button pressed: "Yes" or "No".
+ * @param {string} messageHtml 
+ * @returns {Promise<void>} Resolved promise when completed.
+ */
 async function confirmDialog(messageHtml = "<p>Are you sure?</p>") {
 	return new Promise(resolve => {
 		const stopDialog = document.createElement('dialog');
@@ -387,9 +524,15 @@ async function confirmDialog(messageHtml = "<p>Are you sure?</p>") {
 	});
 }
 
-// Show a message dialog with the given HTML content and an optional postProcess function to run after the
-// dialog is rendered (e.g. to add event listeners to dynamically generated content). Returns a promise
-// that resolves when the dialog is closed.
+/**
+ * Show a message dialog with the given HTML content and an optional postProcess function to run after the
+ * dialog is rendered (e.g. to add event listeners to dynamically generated content). Returns a promise
+ * that resolves when the dialog is closed.
+ * 
+ * @param {string} messageHtml 
+ * @param {function} postProcess 
+ * @returns {Promise<void>} Resolved promise when completed.
+ */
 async function showMessageDialog(messageHtml, postProcess) {
 	return new Promise((resolve) => {
 		const messageDialog = document.createElement("dialog");
@@ -424,6 +567,11 @@ async function showMessageDialog(messageHtml, postProcess) {
 	});
 }
 
+
+/**
+ * Save run to DB and display summary
+ * @returns 
+ */
 async function stopRun() {
 	if ("Yes" !== await confirmDialog("<p>Are you sure you want to stop the run?</p>")) {
 		return;
@@ -437,7 +585,7 @@ async function stopRun() {
 	const route = positions;
 
 	const summary = {
-		date : new Date(startTime), // Store the start time as the date of the run
+		date: new Date(startTime), // Store the start time as the date of the run
 		totalTime: totalTime / 1000, // seconds
 		pausedTime: pausedTime / 1000, // seconds
 		activeTime: activeTime / 1000, // seconds
@@ -452,13 +600,13 @@ async function stopRun() {
 	await Promise.all([
 		saveRun(route, summary),
 		showMessageDialog(`<table>
-	<tr><th>Date</th><td>${new Date().toLocaleString()}</td></tr>
-	<tr><th>Total Time</th><td>${formatTime(Math.round(summary.totalTime))}</td></tr>
-	<tr><th>Paused Time</th><td>${formatTime(Math.round(summary.pausedTime))}</td></tr>
-	<tr><th>Active Time</th><td>${formatTime(Math.round(summary.activeTime))}</td></tr>
-	<tr><th>Distance (km)</th><td>${(summary.distance / 1000).toFixed(3)}</td></tr>
-	<tr><th>Avg pace (min/km)</th><td>${summary.avgPace ? summary.avgPace.toFixed(2) : 'N/A'}</td></tr>
-	<tr><th>Avg speed (km/h)</th><td>${summary.avgSpeed ? summary.avgSpeed.toFixed(2) : 'N/A'}</td></tr>
+<tr><th>Date</th><td>${new Date().toLocaleString()}</td></tr>
+<tr><th>Total Time</th><td>${formatTime(Math.round(summary.totalTime))}</td></tr>
+<tr><th>Paused Time</th><td>${formatTime(Math.round(summary.pausedTime))}</td></tr>
+<tr><th>Active Time</th><td>${formatTime(Math.round(summary.activeTime))}</td></tr>
+<tr><th>Distance (km)</th><td>${(summary.distance / 1000).toFixed(3)}</td></tr>
+<tr><th>Avg pace (min/km)</th><td>${summary.avgPace ? summary.avgPace.toFixed(2) : 'N/A'}</td></tr>
+<tr><th>Avg speed (km/h)</th><td>${summary.avgSpeed ? summary.avgSpeed.toFixed(2) : 'N/A'}</td></tr>
 </table>`)
 	]);
 
@@ -466,34 +614,23 @@ async function stopRun() {
 }
 
 
-// Get all runs from IndexedDB, returning a promise that resolves to an array of run objects
-async function getAllRuns() {
-	const db  = await openDB();
-	const transaction = db.transaction(['runs'], 'readonly');
-	const store = transaction.objectStore('runs');
-
-	return new Promise((resolve, reject) => {
-		const request = store.getAll();
-
-		request.onsuccess = (event) => resolve(event.target.result);
-		request.onerror = (event) => reject(event.target.error);
-	});
-}
-
-// Save passed run as a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
+/**
+ * Save passed run as a kml/kmz file to download so user can choose to open in Google Earth or whatver they want.
+ * @param {Run} data 
+ */
 async function saveRunFile(data) {
 	const kmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
-	<Document>
-		<name>Route ${data.date}</name>
-		<Placemark>
-			<LineString>
-				<coordinates>
-					${data.route.map(pos => `${pos[0]},${pos[1]},0`).join(' ')}
-				</coordinates>
-			</LineString>
-		</Placemark>
-	</Document>
+<Document>
+	<name>Route ${data.date}</name>
+	<Placemark>
+		<LineString>
+			<coordinates>
+				${data.route.map(pos => `${pos[0]},${pos[1]},0`).join(' ')}
+			</coordinates>
+		</LineString>
+	</Placemark>
+</Document>
 </kml>`;
 
 	const filename = `RunningMan.${data.date.replace(/(\/|:|,)/g, '')}`;
@@ -504,48 +641,52 @@ async function saveRunFile(data) {
 	zip.file(filename + ".kml", kmlBlob);
 	const kmzBlob = await zip.generateAsync({ type: 'blob' });
 
-	saveAs(kmzBlob, filename + ".kmz");	
+	saveAs(kmzBlob, filename + ".kmz");
 }
 
-
-async function showHistory() {
+/**
+ * Show history of runs stored in DB display ordered by date. Optionally descending.
+ * 
+ * @param {boolean} descending 
+ */
+async function showHistory(descending) {
 	// Get all runs and sort runs by date, most recent first
-	const allRuns = (await getAllRuns()).filter(run => !!run.route?.length);
-	allRuns.sort((a, b) => new Date(b.date) - new Date(a.date));
+	const allRuns = (await getAllRunsByDate(descending));
+	//allRuns.sort((a, b) => new Date(b.date) - new Date(a.date)); // Not need, index sorts it.
 
 	// Generated HTML table of runs
 	const messageHtml = allRuns.length > 0
 		? `<table>
-	<thead>
+<thead>
+	<tr>
+		<th>Date</th>
+		<th>Total Time</th>
+		<th>Paused Time</th>
+		<th>Active Time</th>
+		<th>Distance (km)</th>
+		<th>Avg Pace (min/km)</th>
+		<th>Avg Speed (km/h)</th>
+		<!-- <th>View</th> -->
+		<th>Download</th>
+		<th>Remove</th>
+	</tr>
+</thead>
+<tbody>
+	${allRuns.filter(run => !!run.route?.length).map(run => `
 		<tr>
-			<th>Date</th>
-			<th>Total Time</th>
-			<th>Paused Time</th>
-			<th>Active Time</th>
-			<th>Distance (km)</th>
-			<th>Avg Pace (min/km)</th>
-			<th>Avg Speed (km/h)</th>
-			<th>View</th>
-			<th>Download</th>
-			<th>Remove</th>
+			<td>${new Date(run.date).toLocaleString()}</td>
+			<td>${formatTime(Math.round(run.totalTime))}</td>
+			<td>${formatTime(Math.round(run.pausedTime))}</td>
+			<td>${formatTime(Math.round(run.activeTime))}</td>
+			<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
+			<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
+			<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
+			<!-- <td><button class="view-route" data-id='${JSON.stringify(run.id)}'>👁️</button></td> -->
+			<td><button class="save-route" data-id='${JSON.stringify(run.id)}'>💾</button></td>
+			<td><button class="remove-run" data-id='${JSON.stringify(run.id)}'>🗑️</button></td>
 		</tr>
-	</thead>
-	<tbody>
-		${allRuns.map(run => `
-			<tr>
-				<td>${new Date(run.date).toLocaleString()}</td>
-				<td>${formatTime(Math.round(run.totalTime))}</td>
-				<td>${formatTime(Math.round(run.pausedTime))}</td>
-				<td>${formatTime(Math.round(run.activeTime))}</td>
-				<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
-				<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
-				<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
-				<!-- <td><button class="view-route" data-id='${JSON.stringify(run.id)}'>👁️</button></td> -->
-				<td><button class="save-route" data-id='${JSON.stringify(run.id)}'>💾</button></td>
-				<td><button class="remove-run" data-id='${JSON.stringify(run.id)}'>🗑️</button></td>
-			</tr>
-		`).join('')}
-	</tbody>
+	`).join('')}
+</tbody>
 </table>`
 		: "<p>No runs recorded yet.</p>";
 
@@ -581,7 +722,7 @@ async function showHistory() {
 				const id = JSON.parse(button.getAttribute('data-id')),
 					data = await getRun(id);
 
-				if ("Yes" !== await confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {				
+				if ("Yes" !== await confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {
 					return;
 				}
 
@@ -595,13 +736,13 @@ async function showHistory() {
 						tr = node;
 						break;
 					}
-				}		
+				}
 
-				if (tr)	{
+				if (tr) {
 					tr.remove()
-				}				
+				}
 			});
-		});		
+		});
 	};
 
 	showMessageDialog(messageHtml, postProcess);
@@ -624,7 +765,7 @@ el("start").addEventListener('click', function () {
 
 
 el("history").addEventListener('click', function () {
-	showHistory();
+	showHistory(true);
 });
 
 el("clear-history").addEventListener('click', function () {
