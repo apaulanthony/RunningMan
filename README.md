@@ -24,6 +24,8 @@ Through the magic of (PWA)[https://developer.mozilla.org/en-US/docs/Web/Progress
     - Confirm.
     - It now launches in standalone window and appears in app menu/start menu.
 
+If you tap-and-hold on the installed app's icon there's an additional shortcut to launch and immediately start the run timer.
+
 ## Screenshots
 
 ![Screenshot 1](dist/screenshot-narrow.png)
