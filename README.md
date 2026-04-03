@@ -8,18 +8,19 @@ I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/example
 
 ## Installation
 
-This app can be install on the phones and (less usefully) computers via the magic of PWA. Navigate to https://apaulanthony.github.io/RunningMan/dist/index.html 
+Through the magic of (PWA)[https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps] this app can be installed on to phones and (less usefully) computers.
 
 1) In mobile browsers (Chrome, Edge, Safari)
+    - Open the (site)[https://apaulanthony.github.io/RunningMan/dist/index.html] in the device's browser
     - The browser may show a prompt:
         - Chrome/Edge: “Install app” bubble in address bar or bottom.
         - Safari iOS: share icon → “Add to Home Screen”.
     - Tap "Install" / "Add to Home Screen".
     - The app is added like a normal native app icon.
 2) On desktop browsers
-    - Open site in Chrome/Edge/Brave.
+    - Open (site)[https://apaulanthony.github.io/RunningMan/dist/index.html] in Chrome/Edge/Brave.
     - Click the install icon in the address bar (plus/minus circle) or menu:
-        0 Chrome/Edge: Menu → “Install [App]”.
+        - Chrome/Edge: Menu → “Install [App]”.
     - Confirm.
     - It now launches in standalone window and appears in app menu/start menu.
 
