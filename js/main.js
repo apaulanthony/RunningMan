@@ -656,12 +656,9 @@ async function stopRun() {
 <tr><th>Distance (km)</th><td>${(summary.distance / 1000).toFixed(3)}</td></tr>
 <tr><th>Avg pace (min/km)</th><td>${summary.avgPace ? summary.avgPace.toFixed(2) : 'N/A'}</td></tr>
 <tr><th>Avg speed (km/h)</th><td>${summary.avgSpeed ? summary.avgSpeed.toFixed(2) : 'N/A'}</td></tr>
-<tr><th>Altitude Stats</th><td>
-	<ul>
-		<li>Min: ${summary.altitudeStats.min !== null ? summary.altitudeStats.min.toFixed(2) : 'N/A'}</li>
-		<li>Max: ${summary.altitudeStats.max !== null ? summary.altitudeStats.max.toFixed(2) : 'N/A'}</li>
-		<li>Gain: ${summary.altitudeStats.gain !== null ? summary.altitudeStats.gain.toFixed(2) : 'N/A'}</li>
-	</ul>
+<tr><th>Altitude Stats</th><td>Min: ${typeof summary.altitudeStats?.min === 'number' ? summary.altitudeStats.min.toFixed(2) : 'N/A'}
+	<br />Max: ${typeof summary.altitudeStats?.max === 'number' ? summary.altitudeStats.max.toFixed(2) : 'N/A'}
+	<br />Gain: ${typeof summary.altitudeStats?.gain === 'number' ? summary.altitudeStats.gain.toFixed(2) : 'N/A'}
 </td></tr>
 </table>`)
 	]);
