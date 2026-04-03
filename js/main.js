@@ -69,7 +69,7 @@ new VectorLayer({
 
 // Config
 let autoPauseThreshold = 5; // metres - threshold for triggering auto-pause when movement is below this level for a certain duration
-let altitudeAccuracy = 10; // metres - threshold for accepting altitude data from geolocation API
+let altitudeAccuracy = 5; // metres - threshold for accepting altitude data from geolocation API
 
 // State variables to track the run status, timing, and positions
 let isTracking = false;
@@ -184,9 +184,9 @@ geolocation.on('change:position', function () {
 
 	// Mobile devices may provide altitude data, but it's often inaccurate or unavailable, so we
 	// should handle it gracefully if it's not provided. If it IS provided, we can check the accuracy
-	// to decide whether to include it in the stored position data or not.
-	let altitude = geolocation.getAltitude() || null;
-	altitude = altitude && geolocation.getAltitudeAccuracy() < altitudeAccuracy ? Math.round(altitude / altitudeAccuracy) * altitudeAccuracy : null;
+	// to decide whether to include it in the stored position data if it is wildly out. If  altitudeAccuracy
+	// is not provided at all we counter-intuitively have to assume it IS accurate to within our threshold.
+	const altitude = (((geolocation.getAltitudeAccuracy() || 0) < altitudeAccuracy) && geolocation.getAltitude()) || null;
 
 	const [lon, lat] = toLonLat(coordinates);
 	positions.push([lon, lat, altitude, new Date().getTime()]);
