@@ -12,6 +12,24 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import packageJson from '../package.json';
 
+// Config
+let autoPauseThreshold = 5; // metres - threshold for triggering auto-pause when movement is below this level for a certain duration
+let altitudeAccuracy = 5; // metres - threshold for accepting altitude data from geolocation API
+
+// State variables to track the run status, timing, and positions
+let isTracking = false;
+let isPaused = false;
+
+let startTime = null;
+let pausedElapsed = 0;
+let lastPauseStart = null;
+let positions = []; // Array of position data points that in turn are made up of [longitude, latitude, altitude, timestamp, speed, bearing]
+let lastPosition = null;
+
+let autoPauseTimer = null;
+let timerInterval = null;
+
+
 // Initialize the map view centered at (0, 0) with a zoom level of 15
 const view = new View({
 	center: fromLonLat([0, 0]),
@@ -66,23 +84,6 @@ new VectorLayer({
 	}),
 });
 
-
-// Config
-let autoPauseThreshold = 5; // metres - threshold for triggering auto-pause when movement is below this level for a certain duration
-let altitudeAccuracy = 5; // metres - threshold for accepting altitude data from geolocation API
-
-// State variables to track the run status, timing, and positions
-let isTracking = false;
-let isPaused = false;
-
-let startTime = null;
-let pausedElapsed = 0;
-let lastPauseStart = null;
-let positions = [];
-let lastPosition = null;
-
-let autoPauseTimer = null;
-let timerInterval = null;
 
 // Helper function to get element by ID
 function el(id) {
@@ -182,14 +183,19 @@ geolocation.on('change:position', function () {
 	const coordinates = geolocation.getPosition();
 	if (!coordinates) return;
 
-	// Mobile devices may provide altitude data, but it's often inaccurate or unavailable, so we
-	// should handle it gracefully if it's not provided. If it IS provided, we can check the accuracy
-	// to decide whether to include it in the stored position data if it is wildly out. If  altitudeAccuracy
-	// is not provided at all we counter-intuitively have to assume it IS accurate to within our threshold.
-	const altitude = (((geolocation.getAltitudeAccuracy() || 0) < altitudeAccuracy) && geolocation.getAltitude()) || null;
-
 	const [lon, lat] = toLonLat(coordinates);
-	positions.push([lon, lat, altitude, new Date().getTime()]);
+
+	// Mobile devices may provide altitude data, but it's often inaccurate or unavailable, so we
+	// should handle it a little carefuly. Check getAltitudeAccuracy() ("The accuracy of the altitude
+	// measurement in meters", so bigger number = worse) to decide whether to include it in the stored
+	// position data if it's not known to be wildly out.
+	const altitude = (((geolocation.getAltitudeAccuracy() || 0) < altitudeAccuracy) && geolocation.getAltitude()) || null;
+	
+	// Store the position data as an array of [longitude, latitude, altitude, timestamp, speed, bearing]
+	// The array can extend as needed to allow for more detailed analysis and potential future features.
+	// I've included speed and bearing despite not using them yet as having them available allows for more flexibility down the line
+	positions.push([lon, lat, altitude, new Date().getTime(), geolocation.getSpeed() || null, geolocation.getBearing() || null]);
+
 	positionFeature.setGeometry(new Point(coordinates));
 	pathFeature.setGeometry(new LineString(positions.map(pos => fromLonLat(pos.slice(0,2)))));
 	view.setCenter(coordinates);
@@ -469,7 +475,10 @@ async function resetUi() {
 	cancelTimerInterval();
 }
 
-async function startRun() {
+export async function startRun() {
+	// Prevent starting a new run if one is already in progress
+	if (isTracking) return;
+
 	resetRun();
 
 	startTime = Date.now();
@@ -633,7 +642,10 @@ function captureSummary(startTime, pausedElapsed, route = []) {
  * Save run to DB and display summary
  * @returns 
  */
-async function stopRun() {
+export async function stopRun() {
+	// Nothing to do if not currently tracking a run
+	if (!isTracking) return;
+
 	if ("Yes" !== await confirmDialog("<p>Are you sure you want to stop the run?</p>")) {
 		return;
 	}
@@ -664,6 +676,11 @@ async function stopRun() {
 	]);
 
 	resetUi();
+
+	return {		
+		summary,
+		route
+	}
 }
 
 
@@ -815,10 +832,8 @@ async function clearHistory() {
 }
 
 // Event listeners for control buttons
-el("start").addEventListener('click', function () {
-	if (!isTracking) {
-		startRun();
-	}
+el("start").addEventListener('click', function () {	
+	startRun();
 });
 
 
@@ -855,6 +870,6 @@ if ('serviceWorker' in navigator) {
 }
 
 // Register the shortcut for starting a run when the app is launched with ?start=true
-if (!isTracking && new URLSearchParams(location.search).get("start") === "true") {
+if (new URLSearchParams(location.search).get("start") === "true") {
 	startRun();
 }
