@@ -58,7 +58,7 @@ var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=
 			<td>${e.distance?(e.distance/1e3).toFixed(2):`N/A`}</td>
 			<td>${e.avgPace?e.avgPace.toFixed(2):`N/A`}</td>
 			<td>${e.avgSpeed?e.avgSpeed.toFixed(2):`N/A`}</td>
-			<td>${e.altitudeStats?.min===null?`N/A`:e.altitudeStats.min.toFixed(2)}, ${e.altitudeStats?.max===null?`N/A`:e.altitudeStats.max.toFixed(2)}, ${e.altitudeStats?.gain===null?`N/A`:e.altitudeStats.gain.toFixed(2)}</td>
+			<td>${typeof e.altitudeStats?.min==`number`?e.altitudeStats.min.toFixed(2):`N/A`}, ${typeof e.altitudeStats?.max==`number`?e.altitudeStats.max.toFixed(2):`N/A`}, ${typeof e.altitudeStats?.gain==`number`?e.altitudeStats.gain.toFixed(2):`N/A`}</td>
 			<!-- <td><button class="view-route" data-id='${JSON.stringify(e.id)}'>👁️</button></td> -->
 			<td><button class="save-route" data-id='${JSON.stringify(e.id)}'>💾</button></td>
 			<td><button class="remove-run" data-id='${JSON.stringify(e.id)}'>🗑️</button></td>

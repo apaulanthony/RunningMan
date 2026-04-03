@@ -741,7 +741,7 @@ async function showHistory(descending) {
 			<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
 			<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
 			<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
-			<td>${run.altitudeStats?.min !== null ? run.altitudeStats.min.toFixed(2) : 'N/A'}, ${run.altitudeStats?.max !== null ? run.altitudeStats.max.toFixed(2) : 'N/A'}, ${run.altitudeStats?.gain !== null ? run.altitudeStats.gain.toFixed(2) : 'N/A'}</td>
+			<td>${typeof run.altitudeStats?.min === 'number' ? run.altitudeStats.min.toFixed(2) : 'N/A'}, ${typeof run.altitudeStats?.max === 'number' ? run.altitudeStats.max.toFixed(2) : 'N/A'}, ${typeof run.altitudeStats?.gain === 'number' ? run.altitudeStats.gain.toFixed(2) : 'N/A'}</td>
 			<!-- <td><button class="view-route" data-id='${JSON.stringify(run.id)}'>👁️</button></td> -->
 			<td><button class="save-route" data-id='${JSON.stringify(run.id)}'>💾</button></td>
 			<td><button class="remove-run" data-id='${JSON.stringify(run.id)}'>🗑️</button></td>
