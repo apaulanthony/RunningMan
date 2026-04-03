@@ -14,4 +14,6 @@ I used OpenLayers [Geolocation example](https://openlayers.org/en/latest/example
 ## ToDo:
 - [X] ~~Make PWA~~
 - [X] ~~Display captured run data. Implement download/clear~~
+- [X] ~~Add elevatation and timestamps to the stored route points~~
+- [ ] Push the tracking to happen in the background (service worker)
 - [ ] Config panel 

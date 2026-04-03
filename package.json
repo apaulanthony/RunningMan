@@ -12,12 +12,12 @@
 	"author": "A Paul Anthony",
 	"license": "ISC",
 	"devDependencies": {
+		"file-saver": "^2.0.5",
 		"jszip": "^3.10.1",
 		"ol": "^10.8.0",
 		"sass": "^1.98.0",
 		"sharp": "^0.33.5",
-		"vite": "^8.0.3",
-		"file-saver": "^2.0.5"
+		"vite": "^8.0.3"
 	},
 	"private": true,
 	"repository": {

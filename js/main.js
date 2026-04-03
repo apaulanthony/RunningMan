@@ -21,14 +21,6 @@ const view = new View({
 // Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
 new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject)).then(position => view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude])));
 
-// Geolocation with high accuracy enabled and projection set to match the map view
-const geolocation = new Geolocation({
-	trackingOptions: {
-		enableHighAccuracy: true,
-	},
-	projection: view.getProjection(),
-});
-
 // Features for current position and path, with styles
 const positionFeature = new Feature();
 positionFeature.setStyle(
@@ -74,12 +66,17 @@ new VectorLayer({
 	}),
 });
 
+
+// Config
+let autoPauseThreshold = 5; // metres - threshold for triggering auto-pause when movement is below this level for a certain duration
+let altitudeAccuracy = 10; // metres - threshold for accepting altitude data from geolocation API
+
 // State variables to track the run status, timing, and positions
 let isTracking = false;
 let isPaused = false;
 
 let startTime = null;
-let pausedTime = 0;
+let pausedElapsed = 0;
 let lastPauseStart = null;
 let positions = [];
 let lastPosition = null;
@@ -111,9 +108,9 @@ function updateTimers() {
 
 	const now = Date.now();
 	const totalElapsed = Math.floor((now - startTime) / 1000);
-	const activeTime = totalElapsed - Math.floor(pausedTime / 1000);
+	const activeElapsed = totalElapsed - Math.floor(pausedElapsed / 1000);
 
-	el("duration-timer").textContent = formatTime(activeTime);
+	el("duration-timer").textContent = formatTime(activeElapsed);
 
 	if (isPaused) {
 		const pauseElapsed = Math.floor((now - lastPauseStart) / 1000);
@@ -168,6 +165,14 @@ function cancelTimerInterval() {
 }
 
 
+// Geolocation with high accuracy enabled and projection set to match the map view
+const geolocation = new Geolocation({
+	trackingOptions: {
+		enableHighAccuracy: true,
+	},
+	projection: view.getProjection(),
+});
+
 /**
  * Listen for position changes from the geolocation API
  */
@@ -177,16 +182,22 @@ geolocation.on('change:position', function () {
 	const coordinates = geolocation.getPosition();
 	if (!coordinates) return;
 
+	// Mobile devices may provide altitude data, but it's often inaccurate or unavailable, so we
+	// should handle it gracefully if it's not provided. If it IS provided, we can check the accuracy
+	// to decide whether to include it in the stored position data or not.
+	let altitude = geolocation.getAltitude() || null;
+	altitude = altitude && geolocation.getAltitudeAccuracy() < altitudeAccuracy ? Math.round(altitude / altitudeAccuracy) * altitudeAccuracy : null;
+
 	const [lon, lat] = toLonLat(coordinates);
-	positions.push([lon, lat]);
+	positions.push([lon, lat, altitude, new Date().getTime()]);
 	positionFeature.setGeometry(new Point(coordinates));
-	pathFeature.setGeometry(new LineString(positions.map(pos => fromLonLat(pos))));
+	pathFeature.setGeometry(new LineString(positions.map(pos => fromLonLat(pos.slice(0,2)))));
 	view.setCenter(coordinates);
 
 	// Check for auto-pause
 	if (lastPosition) {
 		const dist = haversineDistance(lastPosition[1], lastPosition[0], lat, lon);
-		if (dist >= 5) { // More than 5m movement
+		if (dist >= autoPauseThreshold) { // More than autoPauseThreshold metres movement
 			cancelAutoPauseTimer();
 		} else if (!autoPauseTimer) {
 			autoPauseTimer = setTimeout(() => {
@@ -401,7 +412,7 @@ async function deleteAllRuns() {
 function resetRun() {
 	isPaused = false;
 	startTime = null;
-	pausedTime = 0;
+	pausedElapsed = 0;
 	lastPauseStart = null;
 	positions = [];
 	lastPosition = null;
@@ -483,7 +494,7 @@ async function pauseRun() {
 
 async function resumeRun() {
 	isPaused = false;
-	pausedTime += Date.now() - lastPauseStart;
+	pausedElapsed += Date.now() - lastPauseStart;
 	await fadeInOut(pauseOverlay, 'none');
 }
 
@@ -569,6 +580,56 @@ async function showMessageDialog(messageHtml, postProcess) {
 
 
 /**
+ * Build summary from passed in copy of state variables (startTime, pausedElapsed, route) and calculate metrics. 
+ * 
+ * 
+ * @param {number} startTime - Timestamp of when the run started
+ * @param {number} pausedElapsed - Total elapsed time spent paused during the run (in milliseconds)
+ * @param {Array} route - Array of position data points
+ * @returns {object} Summary of run: total time, distance, average pace/speed, and altitude stats (min/max/gain). Suitable for use by the summary dialog and/or stored in the database.
+ */
+function captureSummary(startTime, pausedElapsed, route = []) {
+	// Times are calcuated in milliseconds, convert to seconds for display and storage
+	const endTime = Date.now();
+	const totalElapsed = endTime - startTime;
+	const activeElapsed = totalElapsed - pausedElapsed;
+	const distance = calculateTotalDistance();
+
+	// Extract altitude data points from the positions array, filtering out any null values which represent invalid or unavailable altitude
+	// readings that would otherwise skew the results.
+	const altitudeDataPoints = route.map(pos => pos[2]).filter(val => val !== null);
+
+	// Calculate altitude gain by iterating through the altitude data points and summing up all positive differences between consecutive
+	// points. If there are less than 2 valid altitude points, set gain to null since it can't be calculated.
+	const altitudeGain = altitudeDataPoints.length > 1 ? altitudeDataPoints.reduce((gain, alt, idx, arr) => {
+			if (idx === 0) return gain;
+
+			const diff = alt - arr[idx - 1];
+			return gain + (diff > 0 ? diff : 0);
+		}, 0) : null;	
+	
+	// Sort altitude data points to easily get min and max values, ignoring nulls since we filtered them out above
+	altitudeDataPoints.sort((a, b) => a - b);
+
+	const altitudeStats = {
+		min: altitudeDataPoints[0] || null,
+		max: altitudeDataPoints[altitudeDataPoints.length - 1] || null,
+		gain: altitudeGain
+	};
+
+	return {
+		date: new Date(startTime), // Store the start time as the date of the run
+		totalElapsed: totalElapsed / 1000, // seconds
+		pausedElapsed: pausedElapsed / 1000, // seconds
+		activeElapsed: activeElapsed / 1000, // seconds
+		distance: distance, // metres
+		avgSpeed: distance > 0 ? ((distance / 1000) / (activeElapsed / 3_600_000)) : 0, // km/h
+		avgPace: distance > 0 ? (activeElapsed / 60000) / (distance / 1000) : 0, // min/km
+		altitudeStats: altitudeStats
+	};
+}
+
+/**
  * Save run to DB and display summary
  * @returns 
  */
@@ -577,36 +638,31 @@ async function stopRun() {
 		return;
 	}
 
-	// Times are calcuated in milliseconds, convert to seconds for display and storage
-	const endTime = Date.now();
-	const totalTime = endTime - startTime;
-	const activeTime = totalTime - pausedTime;
-	const distance = calculateTotalDistance();
 	const route = positions;
-
-	const summary = {
-		date: new Date(startTime), // Store the start time as the date of the run
-		totalTime: totalTime / 1000, // seconds
-		pausedTime: pausedTime / 1000, // seconds
-		activeTime: activeTime / 1000, // seconds
-		distance: distance, // metres
-		avgSpeed: distance > 0 ? ((distance / 1000) / (activeTime / 3_600_000)) : 0, // km/h
-		avgPace: distance > 0 ? (activeTime / 60000) / (distance / 1000) : 0 // min/km
-	};
+	const summary = captureSummary(startTime, pausedElapsed, route);
 
 	resetRun();
+	updateTimers();
+	cancelTimerInterval();
 
 	// Save the run data and show the summary dialog in parallel, waiting for both to complete before resetting the UI
 	await Promise.all([
 		saveRun(route, summary),
 		showMessageDialog(`<table>
 <tr><th>Date</th><td>${new Date().toLocaleString()}</td></tr>
-<tr><th>Total Time</th><td>${formatTime(Math.round(summary.totalTime))}</td></tr>
-<tr><th>Paused Time</th><td>${formatTime(Math.round(summary.pausedTime))}</td></tr>
-<tr><th>Active Time</th><td>${formatTime(Math.round(summary.activeTime))}</td></tr>
+<tr><th>Total Time</th><td>${formatTime(Math.round(summary.totalElapsed))}</td></tr>
+<tr><th>Paused Time</th><td>${formatTime(Math.round(summary.pausedElapsed))}</td></tr>
+<tr><th>Active Time</th><td>${formatTime(Math.round(summary.activeElapsed))}</td></tr>
 <tr><th>Distance (km)</th><td>${(summary.distance / 1000).toFixed(3)}</td></tr>
 <tr><th>Avg pace (min/km)</th><td>${summary.avgPace ? summary.avgPace.toFixed(2) : 'N/A'}</td></tr>
 <tr><th>Avg speed (km/h)</th><td>${summary.avgSpeed ? summary.avgSpeed.toFixed(2) : 'N/A'}</td></tr>
+<tr><th>Altitude Stats</th><td>
+	<ul>
+		<li>Min: ${summary.altitudeStats.min !== null ? summary.altitudeStats.min.toFixed(2) : 'N/A'}</li>
+		<li>Max: ${summary.altitudeStats.max !== null ? summary.altitudeStats.max.toFixed(2) : 'N/A'}</li>
+		<li>Gain: ${summary.altitudeStats.gain !== null ? summary.altitudeStats.gain.toFixed(2) : 'N/A'}</li>
+	</ul>
+</td></tr>
 </table>`)
 	]);
 
@@ -654,7 +710,10 @@ async function showHistory(descending) {
 	const allRuns = (await getAllRunsByDate(descending));
 	//allRuns.sort((a, b) => new Date(b.date) - new Date(a.date)); // Not need, index sorts it.
 
-	// Generated HTML table of runs
+	// Generated HTML table of runs. 
+	// The naming of totalTime/pausedTime/activeTime have been renamed to totalElapsed/pausedElapsed/activeElapsed
+	// to better reflect their purpose (as measures of elapsed time as opposed to an instant), but we should support both in case of 
+	// older runs that were stored with the previous naming convention.
 	const messageHtml = allRuns.length > 0
 		? `<table>
 <thead>
@@ -666,6 +725,7 @@ async function showHistory(descending) {
 		<th>Distance (km)</th>
 		<th>Avg Pace (min/km)</th>
 		<th>Avg Speed (km/h)</th>
+		<th>Alt min/max/gain (m)</th>
 		<!-- <th>View</th> -->
 		<th>Download</th>
 		<th>Remove</th>
@@ -675,12 +735,13 @@ async function showHistory(descending) {
 	${allRuns.filter(run => !!run.route?.length).map(run => `
 		<tr>
 			<td>${new Date(run.date).toLocaleString()}</td>
-			<td>${formatTime(Math.round(run.totalTime))}</td>
-			<td>${formatTime(Math.round(run.pausedTime))}</td>
-			<td>${formatTime(Math.round(run.activeTime))}</td>
+			<td>${formatTime(Math.round(run.totalElapsed || run.totalTime))}</td>
+			<td>${formatTime(Math.round(run.pausedElapsed || run.pausedTime))}</td>
+			<td>${formatTime(Math.round(run.activeElapsed || run.activeTime))}</td>
 			<td>${run.distance ? (run.distance / 1000).toFixed(2) : 'N/A'}</td>
 			<td>${run.avgPace ? run.avgPace.toFixed(2) : 'N/A'}</td>
 			<td>${run.avgSpeed ? run.avgSpeed.toFixed(2) : 'N/A'}</td>
+			<td>${run.altitudeStats?.min !== null ? run.altitudeStats.min.toFixed(2) : 'N/A'}, ${run.altitudeStats?.max !== null ? run.altitudeStats.max.toFixed(2) : 'N/A'}, ${run.altitudeStats?.gain !== null ? run.altitudeStats.gain.toFixed(2) : 'N/A'}</td>
 			<!-- <td><button class="view-route" data-id='${JSON.stringify(run.id)}'>👁️</button></td> -->
 			<td><button class="save-route" data-id='${JSON.stringify(run.id)}'>💾</button></td>
 			<td><button class="remove-run" data-id='${JSON.stringify(run.id)}'>🗑️</button></td>
@@ -698,8 +759,8 @@ async function showHistory(descending) {
 		// 		const id = JSON.parse(button.getAttribute('data-id')),
 		// 			data = await getRun(id);
 
-		// 		//Render the route on the map and zoom to fit the route.
-		// 		pathFeature.setGeometry(new LineString(data.route.map(pos => fromLonLat(pos))));
+		// 		//Render the route on the map and zoom to fit the route (ignore altitude and timestamp).
+		// 		pathFeature.setGeometry(new LineString(data.route.map(pos => fromLonLat(pos.slice(0, 2)))));
 		// 		view.fit(pathFeature.getGeometry(), { padding: [50, 50, 50, 50] });
 
 		// 		// Close the dialog to reveal the map with the selected route
