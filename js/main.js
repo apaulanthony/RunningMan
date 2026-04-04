@@ -23,12 +23,24 @@ let isPaused = false;
 let startTime = null;
 let pausedElapsed = 0;
 let lastPauseStart = null;
-let positions = []; // Array of position data points that in turn are made up of [longitude, latitude, altitude, timestamp, speed, bearing]
+let positions = []; // Array of position data points that in turn are made up of [longitude, latitude, altitude, timestamp, speed, heading]
 let lastPosition = null;
 
 let autoPauseTimer = null;
 let timerInterval = null;
 
+
+// Helper function to get element by ID
+function el(id) {
+	return document.getElementById(id);
+}
+
+// UI elements
+const timerContainer = el("timers");
+const startContainer = el("start-container");
+const historyContainer = el("history-container");
+const actionContainer = el("action-container");
+const pauseOverlay = el("pause-overlay");
 
 // Initialize the map view centered at (0, 0) with a zoom level of 15
 const view = new View({
@@ -37,7 +49,10 @@ const view = new View({
 });
 
 // Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
-new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject)).then(position => view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude])));
+(async () =>{
+	const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject));
+	view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude]));
+})();
 
 // Features for current position and path, with styles
 const positionFeature = new Feature();
@@ -85,17 +100,6 @@ new VectorLayer({
 });
 
 
-// Helper function to get element by ID
-function el(id) {
-	return document.getElementById(id);
-}
-
-// UI elements
-const timerContainer = el("timers");
-const startContainer = el("start-container");
-const historyContainer = el("history-container");
-const actionContainer = el("action-container");
-const pauseOverlay = el("pause-overlay");
 
 
 function formatTime(seconds) {
@@ -111,11 +115,11 @@ function updateTimers() {
 	const totalElapsed = Math.floor((now - startTime) / 1000);
 	const activeElapsed = totalElapsed - Math.floor(pausedElapsed / 1000);
 
-	el("duration-timer").textContent = formatTime(activeElapsed);
+	durationTimer.textContent = formatTime(activeElapsed);
 
 	if (isPaused) {
 		const pauseElapsed = Math.floor((now - lastPauseStart) / 1000);
-		el("pause-timer").textContent = `Paused: ${formatTime(pauseElapsed)}`;
+		pauseTimer.textContent = `Paused: ${formatTime(pauseElapsed)}`;
 	}
 }
 
@@ -191,10 +195,11 @@ geolocation.on('change:position', function () {
 	// position data if it's not known to be wildly out.
 	const altitude = (((geolocation.getAltitudeAccuracy() || 0) < altitudeAccuracy) && geolocation.getAltitude()) || null;
 	
-	// Store the position data as an array of [longitude, latitude, altitude, timestamp, speed, bearing]
+	// Store the position data as an array of [longitude, latitude, altitude, timestamp, speed, heading]
 	// The array can extend as needed to allow for more detailed analysis and potential future features.
-	// I've included speed and bearing despite not using them yet as having them available allows for more flexibility down the line
-	positions.push([lon, lat, altitude, new Date().getTime(), geolocation.getSpeed() || null, geolocation.getBearing() || null]);
+	// I've included speed and heading despite not using them yet as having them available allows for more flexibility down the line
+	const heading = geolocation.getHeading(); // If populated, will need to convert from OL radian to degrees to match Web API GeolocationCoordinates
+	positions.push([lon, lat, altitude, new Date().getTime(), geolocation.getSpeed() || null, (typeof heading === "number" ? (heading * 180 / Math.PI) : null)]);
 
 	positionFeature.setGeometry(new Point(coordinates));
 	pathFeature.setGeometry(new LineString(positions.map(pos => fromLonLat(pos.slice(0,2)))));
