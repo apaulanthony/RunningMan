@@ -2,6 +2,7 @@ import { LocationService } from './LocationService.js';
 import { StorageService } from './StorageService.js';
 import { UIController } from './UIController.js';
 import { TrackerEngine } from './TrackerEngine.js';
+import { ExportService } from './ExportService.js';
 
 class App {
     constructor() {
@@ -9,6 +10,7 @@ class App {
         this.storage = new StorageService();
         this.tracker = new LocationService();
         this.engine = new TrackerEngine();
+        this.export = new ExportService();
 
         this.currentRun = null;
     }
@@ -21,6 +23,8 @@ class App {
         this.ui.onResumeRun = () => this.resumeRun();
         this.ui.onShowHistory = () => this.showHistory();
         this.ui.onClearHistory = () => this.clearHistory();
+        this.ui.exportRun = id => this.exportRun(id);
+        this.ui.deleteRun = id => this.deleteRun(id);
 
         // The Mediator: Connects the GPS updates to the Logic and UI
         this.tracker.subscribe(this.updateCurrentPosition.bind(this));
@@ -103,7 +107,7 @@ class App {
     }
 
     async showHistory() {
-        this.ui.showRunHistoryDialog(await this.storage.getAllRuns());
+        return this.ui.showRunHistoryDialog(await this.storage.getAllRuns());
     }
 
     async clearHistory() {
@@ -111,10 +115,26 @@ class App {
             return;
         }
 
-        this.storage.deleteAllRuns();
+        return this.storage.deleteAllRuns();
     }
 
+    async exportRun (id) {
+        const data = await this.storage.getRun(id);
+
+        // Generate and trigger download of the run data as a kml/kmz file
+        this.export.saveRunToFile(data);      
+    }
+
+    async deleteRun (id) {
+        const data = await this.storage.getRun(id);
+
+        if ("Yes" !== await this.ui.confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {
+            throw new Error("Delete cancelled");
+        }
+
+        return this.storage.deleteRun(id);    
+    }    
 }
 
-const myApp = new App();
-myApp.init();
+const runningMan = new App();
+runningMan.init();

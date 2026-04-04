@@ -4,15 +4,7 @@
  * Responsibility: DOM Manipulation and User Input capture.
  * This module does NOT know about GPS or Databases. It only knows about HTML.
  */
-import Feature from 'ol/Feature.js';
-import Map from 'ol/Map.js';
-import Point from 'ol/geom/Point.js';
-import LineString from 'ol/geom/LineString.js';
-import View from 'ol/View.js';
-import { Circle as CircleStyle, Fill, Stroke, Style } from 'ol/style.js';
-import { OSM, Vector as VectorSource } from 'ol/source.js';
-import { Tile as TileLayer, Vector as VectorLayer } from 'ol/layer.js';
-import { fromLonLat } from 'ol/proj.js';
+import { MapComponent } from './MapComponent.js';
 
 export class UIController {
     constructor() {
@@ -39,65 +31,8 @@ export class UIController {
             historyBtn: el("history"),
             clearHistoryBtn: el("clear-history"),
 
-            map: {
-                // Initialize the map view centered at (0, 0) with a zoom level of 15
-                view: new View({
-                    center: fromLonLat([0, 0]),
-                    zoom: 15,
-                }),
-                positionFeature: new Feature(),
-                pathFeature: new Feature()
-            }
+            map: new MapComponent('map')
         };
-
-
-        // Try to get user's location immediately to center the map, but allow it to update when geolocation tracking starts
-        (async () =>{
-            const position = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject));
-            this.elements.map.view.setCenter(fromLonLat([position.coords.longitude, position.coords.latitude]));
-        })();
-
-        // Features for current position and path, with styles
-        this.elements.map.positionFeature.setStyle(
-            new Style({
-                image: new CircleStyle({
-                    radius: 6,
-                    fill: new Fill({
-                        color: '#ff0000',
-                    }),
-                    stroke: new Stroke({
-                        color: '#fff',
-                        width: 2,
-                    }),
-                }),
-            }),
-        );
-
-        this.elements.map.pathFeature.setStyle(
-            new Style({
-                stroke: new Stroke({
-                    color: '#ff0000',
-                    width: 3,
-                }),
-            }),
-        );
-
-        // Create the map with a base OSM layer and the defined view
-        // Add the vector layer to the map
-        new VectorLayer({
-            map: new Map({
-                layers: [
-                    new TileLayer({
-                        source: new OSM(),
-                    })
-                ],
-                target: 'map',
-                view: this.elements.map.view,
-            }),
-            source: new VectorSource({
-                features: [this.elements.map.positionFeature, this.elements.map.pathFeature],
-            }),
-        });
 
         // Callbacks (to be provided by the App Mediator)
         this.onStartRun = null;
@@ -107,6 +42,9 @@ export class UIController {
         this.onShowHistory = null;
         this.onClearHistory = null;
 
+        this.exportRun = null;
+        this.deleteRun = null;
+
         this._setupEventListeners();
     }
 
@@ -115,30 +53,29 @@ export class UIController {
      */
     _setupEventListeners() {
         this.elements.startBtn?.addEventListener('click', () => {
-            if (this.onStartRun) this.onStartRun();
+            if (typeof this.onStartRun === "function") this.onStartRun();
         });
 
         this.elements.stopBtn?.addEventListener('click', () => {
-            if (this.onStopRun) this.onStopRun();
+            if (typeof this.onStopRun === "function") this.onStopRun();
         });
 
         this.elements.pauseBtn?.addEventListener('click', () => {
-            if (this.onPauseRun) this.onPauseRun();
+            if (typeof this.onPauseRun === "function") this.onPauseRun();
         });
 
         this.elements.resumeBtn?.addEventListener('click', () => {
-            if (this.onResumeRun) this.onResumeRun();
+            if (typeof this.onResumeRun === "function") this.onResumeRun();
         });
 
         this.elements.historyBtn?.addEventListener('click', () => {
-            if (this.onShowHistory) this.onShowHistory();
+            if (typeof this.onShowHistory === "function") this.onShowHistory();
         });
 
-        this.elements.clearHistoryBtn?.addEventListener('click', () => {
-            if (this.onClearHistory) this.onClearHistory();
+        this.elements.clearHistoryBtn?.addEventListener('click', async () => {
+            if (typeof this.onClearHistory === "function") this.onClearHistory();
         });
     }
-
 
     /**
      * Try to fade panels in and out gracefully so that the animation is seen before toggling the display to hide the element entirely.
@@ -191,12 +128,7 @@ export class UIController {
      * @param {array} route 
      */
     updateMapPositions(route) {
-        const point = fromLonLat(route[route.length - 1]?.slice(0, 2));
-        const path = route.map(pos => fromLonLat(pos.slice(0,2)));
-
-        this.elements.map.positionFeature.setGeometry(new Point(point));
-        this.elements.map.pathFeature.setGeometry(new LineString(path));
-        this.elements.map.view.setCenter(point);
+        this.elements.map.updateMapPositions(route);
     }
 
     /**
@@ -296,8 +228,8 @@ export class UIController {
         })
     }
 
-    showRunDetailsDialog(summary) {
-        this.showMessageDialog(`<table>
+    async showRunDetailsDialog(summary) {
+        return this.showMessageDialog(`<table>
 <tr><th>Date</th><td>${new Date(summary.date).toLocaleString()}</td></tr>
 <tr><th>Total Time</th><td>${this.formatTime(Math.round(summary.totalElapsed))}</td></tr>
 <tr><th>Paused Time</th><td>${this.formatTime(Math.round(summary.pausedElapsed || 0))}</td></tr>
@@ -316,7 +248,7 @@ export class UIController {
      * Render the history list from an array of runs
      * @param {Array} runs 
      */
-    showRunHistoryDialog(allRuns) {
+    async showRunHistoryDialog(allRuns) {
         // Generated HTML table of runs. 
         // The naming of totalTime/pausedTime/activeTime have been renamed to totalElapsed/pausedElapsed/activeElapsed
         // to better reflect their purpose (as measures of elapsed time as opposed to an instant), but we should support both in case of 
@@ -376,44 +308,41 @@ export class UIController {
             // });
 
             dialog.querySelectorAll('.save-route').forEach(button => {
-                button.addEventListener('click', async () => {
-                    const id = JSON.parse(button.getAttribute('data-id')),
-                        data = await getRun(id);
-
-                    // Generate and trigger download of the run data as a kml/kmz file
-                    saveRunFile(data);
+                button.addEventListener('click', () => {
+                    if (typeof this.exportRun === "function") this.exportRun(JSON.parse(button.getAttribute('data-id')));
                 });
             });
 
             dialog.querySelectorAll('.remove-run').forEach(button => {
-                button.addEventListener('click', async () => {
-                    const id = JSON.parse(button.getAttribute('data-id')),
-                        data = await getRun(id);
-
-                    if ("Yes" !== await confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {
-                        return;
-                    }
-
-                    await deleteRun(id);
-
-                    // Start with the button element and traverse up the DOM tree until we find the <tr> ancestor
-                    // Remove it from the table to immediately reflect the deletion in the UI without needing to refresh the entire history dialog
-                    let tr = null;
-                    for (let node = button; node && !tr; node = node.parentElement) {
-                        if (node.tagName === "TR") {
-                            tr = node;
-                            break;
+                button.addEventListener('click', async () => {                                            
+                    try {
+                        if (typeof this.deleteRun !== "function") {
+                            return;
                         }
-                    }
+                    
+                        await this.deleteRun(JSON.parse(button.getAttribute('data-id')));
 
-                    if (tr) {
-                        tr.remove()
+                        // Start with the button element and traverse up the DOM tree until we find the <tr> ancestor
+                        // Remove it from the table to immediately reflect the deletion in the UI without needing to refresh the entire history dialog
+                        let tr = null;
+                        for (let node = button; node && !tr; node = node.parentElement) {
+                            if (node.tagName === "TR") {
+                                tr = node;
+                                break;
+                            }
+                        }
+
+                        if (tr) {
+                            tr.remove();
+                        }                        
+                    } catch (error) {
+                        // NOT deleted
                     }
                 });
             });
         };
 
-        this.showMessageDialog(messageHtml, postProcess);
+        return this.showMessageDialog(messageHtml, postProcess);
     }
 
     /**
