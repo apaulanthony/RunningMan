@@ -37,33 +37,45 @@ class App {
         // The Mediator: Connects the GPS updates to the Logic and UI
         this.tracker.subscribe(coords => this.updateCurrentPosition(coords));
 
-        // Register service worker for offline support
-        try {
-            const registration = await navigator.serviceWorker?.register('sw.js');
-            console.log('Service Worker registered:', registration);
-        } catch (error) {
-            console.log('Service Worker registration failed:', error);
-        }
+        (async () => {
+            // Register service worker for offline support
+            try {
+                const registration = await navigator.serviceWorker?.register('sw.js');
+                console.log('Service Worker registered:', registration);
+            } catch (error) {
+                console.log('Service Worker registration failed:', error);
+            }
 
-        // Register the shortcut for starting a run when the app is launched with ?start=true
-        if (location?.search && new URLSearchParams(location.search).get("start") === "true") {
-            this.startNewRun();
-        }
+            const search = (location.search && new URLSearchParams(location.search)) || null;
+            if (search) {
+                if ((search?.get("clearCache") === "true")) {
+                    await caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))));
+                }
+    
+                if (search?.get("fixData") === "true") {
+                    await this.storage.fixData().then(result => console.log(`FixData Updated ${result.length}`, result), error => console.log("FixData error", error));
+                }
+    
+                // Link the manifest registered short cut ?start=true to fire when the app is launched
+                if (search?.get("start") === "true") {
+                    await this.startNewRun();
+                }
+            }
+        })()
     }
 
-
-    async startNewRun() {    
+    async startNewRun() {
         // SAFETY: If a run is already in progress, stop it first to reset the tracker state
         if (this.currentRun) {
             this._trackerStop();
         }
 
-        const now = Date.now();
+        const now = new Date();
         // Initialize with zeroed out time
         this.currentRun = this.engine.updateSession({
-            date: now, 
-            route: [], 
-            lastMovementTimestamp: now, 
+            date: now,
+            route: [],
+            lastMovementTimestamp: now.getTime(),
             pausedElapsed: 0,
             paused: false
         });
@@ -73,7 +85,7 @@ class App {
 
         this.lastTickTime = null; // Reset tick for the new loop
         this._startUnifiedLoop();
-        this._startStationaryWatchdog();        
+        this._startStationaryWatchdog();
     }
 
 
@@ -89,7 +101,7 @@ class App {
             if (!this.currentRun || this.currentRun.paused) return;
 
             const timeSinceMovement = Date.now() - this.currentRun.lastMovementTimestamp;
-            
+
             // If no movement seen for > 60 seconds, pause the run
             if (timeSinceMovement > this.movementGracePeriod) {
                 console.log("Stationary detected via watchdog");
@@ -97,7 +109,7 @@ class App {
             }
         }, 5_000); // Check every 5 seconds
     }
-        
+
 
     updateCurrentPosition(coords) {
         const previousDistance = this.currentRun?.distance || 0;
@@ -107,7 +119,7 @@ class App {
         const distanceMoved = currentDistance - previousDistance;
 
         // If movement is significant, update the timestamp
-        if (distanceMoved > this.movementThreadhold) {            
+        if (distanceMoved > this.movementThreadhold) {
             // Auto un-pause if movement is detected
             if (this.currentRun.paused) {
                 console.log("Movement detected via watchdog, un-pausing run")
@@ -132,7 +144,7 @@ class App {
 
         const loop = (currentTime) => {
             if (!app.lastTickTime) app.lastTickTime = currentTime;
-            
+
             // Calculate delta (time since last frame)
             const deltaTime = (currentTime - app.lastTickTime) / 1000;
             app.lastTickTime = currentTime;
@@ -157,10 +169,10 @@ class App {
         app.animationFrameId = requestAnimationFrame(loop);
     }
 
-    
+
     pauseRun() {
-        if (!this.currentRun || this.currentRun.paused) return; 
-        
+        if (!this.currentRun || this.currentRun.paused) return;
+
         this.currentRun.paused = true;
         this.ui.setPauseState(true);
         // We don't stop the loop! The loop just starts accumulating 'pausedElapsed'
@@ -195,10 +207,10 @@ class App {
 
         this._trackerStop();
 
-        this.currentRun.finised = new Date();
+        this.currentRun.finished = new Date();
         const currentRun = this.engine.updateSession(this.currentRun);
 
-        this.ui.setRunningState(!this.currentRun.finised);
+        this.ui.setRunningState(!this.currentRun.finished);
 
         this.currentRun = null;
         this.storage.saveRun(currentRun);
@@ -207,7 +219,7 @@ class App {
     }
 
     async showHistory() {
-        return this.ui.showRunHistoryDialog(await this.storage.getAllRuns());
+        return this.ui.showRunHistoryDialog(await this.storage.getAllRunsByDate(true));
     }
 
     async clearHistory() {
@@ -221,12 +233,12 @@ class App {
      * @param {*} id 
      * @returns 
      */
-    async exportRun (id) {
+    async exportRun(id) {
         const data = await this.storage.getRun(id);
-        return this.export.saveRunToFile(data);      
+        return this.export.saveRunToFile(data);
     }
 
-    async deleteRun (id) {
+    async deleteRun(id) {
         const data = await Promise.resolve(this.storage.getRun(id));
         const response = await this.ui.confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`);
         if (response !== "Yes") { throw new Error("Delete cancelled"); }

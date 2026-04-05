@@ -51,7 +51,7 @@ export class StorageService {
      * 
      * @returns {Promise<IDBDatabase>}
      */
-    async openDB () {
+    async openDB() {
         return new Promise((resolve, reject) => {
             // Read application version number from package.json and convert a sematic versioning string into an 32-bit integer.		
             const request = indexedDB.open('RunningManDB', this.version);
@@ -76,26 +76,22 @@ export class StorageService {
     /**
      * Save a run to IndexedDB, returning a promise that resolves to the ID of the saved run
      * 
-     * @param {array<array<number>>} route 
-     * @param {object} summary 
+     * @param {object} run 
      * @returns 
-     */    
-    async saveRun(route, summary) {
+     */
+    async saveRun(run) {
         const db = await this.openDB();
 
         return new Promise(async (resolve, reject) => {
             db.onerror = (event) => reject(event.target.error);
 
-            // Store the route and summary data together, along with a default timestamp for
-            // sorting if one isn't provided in the summary (the difference being startTime vs endTime,
-            // but either works for sorting runs chronologically)
             const request = db.transaction(['runs'], 'readwrite')
                 .objectStore('runs')
-                .put({ date: new Date(), route: route, ...summary });
+                .put({ date: Date.now(), ...run });
 
             request.onsuccess = (event) => resolve(event.target.result);
         });
-    }    
+    }
 
     /**
      * Get a run by ID from IndexedDB
@@ -148,14 +144,13 @@ export class StorageService {
         return new Promise((resolve, reject) => {
             db.onerror = (event) => reject(event.target.error);
 
-            const request = db.transaction(['runs'], 'readonly')
+            const request = db.transaction(['runs'])
                 .objectStore('runs')
                 .getAll();
 
             request.onsuccess = (event) => resolve(event.target.result);
         });
     }
-
 
     /**
      * Get all runs from IndexedDB, sorted by date
@@ -182,7 +177,6 @@ export class StorageService {
         });
     }
 
-
     /**
      * Clear all runs from IndexedDB, returning a promise that resolves when the operation is complete
      * 
@@ -200,5 +194,73 @@ export class StorageService {
 
             request.onsuccess = (event) => resolve(event.target.result);
         });
+    }
+
+    /**
+     * 
+     * @returns 
+     */
+    async fixData() {
+        const runs = await this.getAllRuns();
+
+        // Write corrections and series of map. If the correction is detect, then clone the
+        // run object and make the changes to that, otherwise let the original drop through.
+        // Mark updated/replacement run objects with "fixed", and we can use an Iterator with
+        // a Stream-like pattern to effeciently walk through an apply changs in one loop.
+        // Fallback to a normal array if Iterator not availailable, same end effect, but each
+        // step would trigger its own loop.
+        const runStream = (typeof Iterator?.from === "function" ? Iterator.from(runs) : runs).map(run => {
+            if (!run.route.route) return run;
+
+            // Is there a spurious route within route? If so, collapse it to be the main object, 
+            return {
+                ...run,
+                ...run.route,
+                fixed: true
+            }
+        }).map(run => {
+            if (typeof run.date.getTime === "function") return run;
+
+            const update = { ...run, fixed: true };
+
+            // Ensure the "date" is consistently a Date object as opposed to timestamp
+            update.date = update.date && new Date(update.date);
+
+            return update;
+        }).map(run => {
+            if (!run.finised) return run;
+
+            const update = { ...run, fixed: true };
+
+            // Correct stupid typo
+            update.finished = update.finised;
+            delete update.finised;
+
+            return update;
+        }).map(run => {
+            const update = { ...run };
+            let updated = 0;
+
+            // Ensure with route, each coord's timestamp is consistently a Date object
+            update.route?.forEach(coord => {
+                if (typeof coord[3].getTime !== 'function') {
+                    updated += 1;
+                    coord[3] = new Date(coord[3]);
+                }
+            })
+
+            if (updated) {
+                update.fixed = true;
+            }
+
+            return update;
+        }).filter(run => run.fixed)
+            .map(run => {
+                const update = { ...run };
+                delete update.fixed;
+                return this.saveRun(update);
+            })
+
+        return Promise.all(runStream);
     }
 }

@@ -39,7 +39,7 @@ export class TrackerEngine {
     updateSession(currentSession, newCoord) {
         if (!currentSession) return null;
 
-        const { longitude, latitude, altitude, timestamp = Date.now(), speed, heading} = newCoord || {};
+        const { longitude, latitude, altitude, timestamp = new Date(), speed, heading} = newCoord || {};
         
         // If this is the first point, just initialize the session
         if (!currentSession.route || currentSession.route.length === 0) {
