@@ -2,7 +2,7 @@
  * StorageService.js
  * Responsibility: Stores and retrieves data from local storage
  */
-const version = __APP_VERSION__; 
+const version = __APP_VERSION__;
 
 export class StorageService {
     init() {
@@ -197,25 +197,26 @@ export class StorageService {
     }
 
     /**
-     * 
-     * @returns 
+     * @returns Promise containing an array of runs Ids that have been fixed (if any)
      */
     async fixData() {
         const runs = await this.getAllRuns();
 
-        // Write corrections and series of map. If the correction is detect, then clone the
-        // run object and make the changes to that, otherwise let the original drop through.
-        // Mark updated/replacement run objects with "fixed". We can use an Iterator to walk
-        // through all items one at a time, applying all of the maps' changes, in just one loop.        
-        // Fallback to a normal array if Iterator isn't available, same end-effect but each        
-        // step would trigger its own array and loop making if much more inefficient.
+        // Write corrections and series of map functions. If the correction is detected, then clone the
+        // run object and make the changes to that, otherwise let the original drop through. Mark the
+        // updated/replacement run objects with "fixed" property so that we can filter out those that
+        // tha didn't need updating.
+
+        // We can use an Iterator to walk through all items one at a time, applying all of the maps'
+        // changes, in just one loop. Fallback to a normal array if Iterato isn't available, same
+        // end-effect but each step would trigger its own array and loop making if much more inefficient.
 
         // Check if we have the modern Iterator Helpers (map, filter, etc.)
-        const hasIteratorHelpers = self.Iterator?.from === "function" 
-            && typeof Iterator.prototype.map === 'function' 
+        const hasIteratorHelpers = self.Iterator?.from === "function"
+            && typeof Iterator.prototype.map === 'function'
             && typeof Iterator.prototype.filter === 'function';
 
-        const runsIterator = (hasIteratorHelpers 
+        const runsIterator = (hasIteratorHelpers
             ? Iterator.from(runs)  // Lazy & Efficient
             : runs  // Eager & Compatible
         ).map(run => {
