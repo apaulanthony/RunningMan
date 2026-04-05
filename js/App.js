@@ -1,3 +1,7 @@
+/**
+ * App.js
+ * Responsibility: Orchestrates the application flow.
+ */
 import { LocationService } from './LocationService.js';
 import { StorageService } from './StorageService.js';
 import { UIController } from './UIController.js';
@@ -12,6 +16,7 @@ class App {
         this.engine = new TrackerEngine();
         this.export = new ExportService();
 
+        this.watchdogTimer = null;
         this.currentRun = null;
     }
 
@@ -49,47 +54,134 @@ class App {
 
 
     _startRunTimer(timeout = 1000) {
+        const app = this;
+
+        (function render() {
+            app.ui.updateTimerDisplays(app.currentRun);
+            app.animationFrameId = requestAnimationFrame(render);
+        })();
+
         return setInterval(() => {
-            this.currentRun = this.engine.updateSession(this.currentRun);
-            this.ui.updateTimerDisplays(this.currentRun)
-        }, timeout)
+            app.currentRun = app.engine.updateSession(app.currentRun);
+        }, timeout);        
     }
 
-    async startNewRun() {         
+    async startNewRun() {    
+        // SAFETY: If a run is already in progress, stop it first to reset the tracker state
+        if (this.currentRun) {
+            this._trackerStop();
+            this.currentRun = null;
+        }
+
+        const now = Date.now();
+        this.currentRun = this.engine.updateSession({ date: now, route: [], lastMovementTimestamp: now});
         this.tracker.start();
-        this.currentRun = { date: Date.now(), route: [], timer: this._startRunTimer()};
-        this.currentRun = this.engine.updateSession(this.currentRun);
-        this.ui.setRunningState(!!this.currentRun.timer);
+        this.ui.setRunningState(true);
+
+        // Start the "Stationary Watchdog" timer
+        this._startStationaryWatchdog();        
     }
+
+
+    /**
+     * The Watchdog: Periodically checks if the current time 
+     * has significantly diverged from the last movement timestamp.
+     */
+    _startStationaryWatchdog() {
+        // Clear any existing watchdog to prevent multiple timers running
+        if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+
+        this.watchdogTimer = setInterval(() => {
+            if (!this.currentRun || this.currentRun.paused) return;
+
+            const timeSinceMovement = Date.now() - this.currentRun.lastMovementTimestamp;
+            
+            // If no movement seen for > 60 seconds, pause the run
+            if (timeSinceMovement > 60_000) {
+                console.log("Stationary detected via watchdog");
+                this.pauseRun();
+            }
+        }, 5000); // Check every 5 seconds
+    }
+        
 
     updateCurrentPosition(coords) {
-        // The Engine calculates, the UI displays        
+        const previousDistance = this.currentRun?.distance || 0;
         this.currentRun = this.engine.updateSession(this.currentRun, coords);
-        this.ui.updateMapPositions(this.currentRun.route);
+
+        const currentDistance = this.currentRun?.distance || 0;
+        const distanceMoved = currentDistance - previousDistance;
+
+        // If movement is significant, update the timestamp
+        if (distanceMoved > 0.005) {
+            this.currentRun.lastMovementTimestamp = Date.now();
+        }
+
+        this.ui.updateMapPositions(this.currentRun?.route);
         this.ui.updateTimerDisplays(this.currentRun);
     }
 
 
     _startPauseTimer(timeout = 1000) {
+        const app = this;
+
+        (function render() {
+            app.ui.updateTimerDisplays(app.currentRun);
+            app.animationFrameId = requestAnimationFrame(render);
+        })();
+
+        let startTime = Date.now();
+
         return setInterval(() => {
-            this.currentRun.pausedElapsed += (timeout / 1000); // Count seconds in paused state.
-            this.currentRun = this.engine.updateSession(this.currentRun);
-            this.ui.updateTimerDisplays(this.currentRun)
-        }, timeout)
+            const now = Date.now();
+            const elapsed = Math.floor((now - startTime) / 1000) // Calc actual time between interval (in seconds)
+            startTime = now;
+
+            app.currentRun.pausedElapsed += elapsed;
+            app.currentRun = app.engine.updateSession(app.currentRun);            
+        }, timeout);
     }
 
     pauseRun() {
+        clearInterval(this.watchdogTimer)
+        this.watchdogTimer = null;
+
         clearInterval(this.currentRun.timer);
+        cancelAnimationFrame(this.animationFrameId);
+        
         this.currentRun.pausedElapsed = this.currentRun.pausedElapsed || 0; // Ensure pausedElapsed is initialised
+        this.currentRun.paused = true;
         this.currentRun.timer = this._startPauseTimer();    
-        this.ui.setPauseState(true);
+
+        this.currentRun = this.engine.updateSession(this.currentRun); 
+        this.ui.setPauseState(this.currentRun.paused);
     }
 
     resumeRun() {
         clearInterval(this.currentRun.timer);
+        cancelAnimationFrame(this.animationFrameId);
+
+        this.currentRun.paused = false;
         this.currentRun.timer = this._startRunTimer();
         this.currentRun = this.engine.updateSession(this.currentRun);        
-        this.ui.setPauseState(false);
+        this.ui.setPauseState(this.currentRun.paused);
+    }
+
+
+    /**
+     * Clean-up the tracker and clear all timers.
+     */
+    _trackerStop() {
+        this.tracker.stop();
+        
+        clearInterval(this.watchdogTimer);
+        this.watchdogTimer = null;
+
+        clearInterval(this.currentRun.timer);  
+        this.currentRun.timer = null;
+        
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
     }
 
     async stopCurrentRun() {
@@ -97,12 +189,16 @@ class App {
             return;
         }
 
-        this.tracker.stop();
-        clearInterval(this.currentRun.timer);
-        this.ui.setRunningState(!!(this.currentRun.timer = null));
+        this._trackerStop();
+
+        this.currentRun.finised = new Date();
         const currentRun = this.engine.updateSession(this.currentRun);
+
+        this.ui.setRunningState(!this.currentRun.finised);
+
         this.currentRun = null;
         this.storage.saveRun(currentRun);
+
         this.ui.showRunDetailsDialog(currentRun);
     }
 
@@ -111,29 +207,27 @@ class App {
     }
 
     async clearHistory() {
-        if ("Yes" !== await this.ui.confirmDialog("<p>Are you sure you want to clear all run history? This action cannot be undone.</p>")) {
-            return;
-        }
-
+        const response = await Promise.resolve(this.ui.confirmDialog("<p>Are you sure you want to clear all run history? This action cannot be undone.</p>"));
+        if (response !== "Yes") { throw new Error("Delete all cancelled"); }
         return this.storage.deleteAllRuns();
     }
 
+    /**
+     * 
+     * @param {*} id 
+     * @returns 
+     */
     async exportRun (id) {
         const data = await this.storage.getRun(id);
-
-        // Generate and trigger download of the run data as a kml/kmz file
-        this.export.saveRunToFile(data);      
+        return this.export.saveRunToFile(data);      
     }
 
     async deleteRun (id) {
-        const data = await this.storage.getRun(id);
-
-        if ("Yes" !== await this.ui.confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`)) {
-            throw new Error("Delete cancelled");
-        }
-
-        return this.storage.deleteRun(id);    
-    }    
+        const data = await Promise.resolve(this.storage.getRun(id));
+        const response = await this.ui.confirmDialog(`<p>Are you sure you want to delete the run from <strong>${new Date(data.date).toLocaleString()}</strong>?</p>`);
+        if (response !== "Yes") { throw new Error("Delete cancelled"); }
+        return this.storage.deleteRun(id);
+    }
 }
 
 const runningMan = new App();

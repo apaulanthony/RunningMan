@@ -1,5 +1,4 @@
 import sharp from 'sharp';
-import fs from 'fs';
 
 const emoji = '🏃';
 const sizes = [96, 192, 512];

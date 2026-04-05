@@ -1,3 +1,7 @@
+/**
+ * ExportService.js
+ * Responsibility: Handles exporting data to a file.
+ */
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 

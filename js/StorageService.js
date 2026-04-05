@@ -1,3 +1,7 @@
+/**
+ * StorageService.js
+ * Responsibility: Stores and retrieves data from local storage
+ */
 import packageJson from '../package.json';
 
 export class StorageService {

@@ -31,28 +31,15 @@ export class TrackerEngine {
     }
 
     /**
-     * Formats raw seconds into HH:MM:SS
-     * @param {number} seconds 
-     * @returns {string}
-     */
-    formatDuration(seconds) {
-        const hrs = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = Math.floor(seconds % 60);
-        return [hrs, mins, secs]
-            .map(v => v < 10 ? "0" + v : v)
-            .filter((v, i) => hrs > 0 || i > 0) // Hide hours if 0
-            .join(":");
-    }
-
-    /**
      * Processes a new coordinate update against the existing session data.
      * @param {Object} currentSession - The existing session state
      * @param {Object} newCoord - Optional. The new longitude/latitude/altitude/timestamp/speed/heading
      * @returns {Object} The updated session state
      */
     updateSession(currentSession, newCoord) {
-        const { longitude, latitude, altitude, timestamp = new Date(), speed, heading} = newCoord || {};
+        if (!currentSession) return null;
+
+        const { longitude, latitude, altitude, timestamp = Date.now(), speed, heading} = newCoord || {};
         
         // If this is the first point, just initialize the session
         if (!currentSession.route || currentSession.route.length === 0) {
@@ -74,39 +61,38 @@ export class TrackerEngine {
         const lastPoint = currentSession.route?.[currentSession.route.length - 1];
 
         // Append current point to the session's route
-        const route =  [...currentSession.route, [longitude, latitude, altitude, timestamp, speed, heading]];
+        const route = [...currentSession.route];
         if (newCoord){
             route.push([longitude, latitude, altitude, timestamp, speed, heading]);
         }
 
-        const distMoved = lastPoint && this.calculateDistance(
+        const distMoved = ((lastPoint && newCoord) || 0) && this.calculateDistance(
             lastPoint[1], lastPoint[0], 
             latitude, longitude,
         );
-
         
         const distance = currentSession.distance + (distMoved || 0);
         
-        const totalElapsed = Math.floor((timestamp - currentSession.date) / 1000);
+        const totalElapsed = (timestamp - currentSession.date) / 1000;
         const activeElapsed = totalElapsed - (currentSession.pausedElapsed || 0);
         
-        const elevGain = altitude > lastPoint[2] //altitude 
+        const elevGain = ((lastPoint && newCoord) || 0) && altitude > lastPoint[2] //altitude 
             ? altitude - lastPoint[2]
             : 0;
         
-        const altitudeGain = (currentSession.altitudeStats?.gain || 0) + (elevGain + 0);;
+        const altitudeGain = (currentSession.altitudeStats?.gain || 0) + (elevGain + 0);
         const altitudeList = route.map(p => p.altitude).filter(a => !!a);
         altitudeList.sort((a,b)=>a-b);
 
-        // 3. Return updated state
+        // Return updated state
         return {
             ...currentSession,
             route: route,
-            distance:  distance,
+            distance:  distance, // km
             totalElapsed: totalElapsed, // seconds
             activeElapsed: activeElapsed, //seconds
             avgSpeed: distance > 0 ? ((distance / 1000) / (activeElapsed / 3_600_000)) : 0, // km/h
-            avgPace: distance > 0 ? (activeElapsed / 60000) / (distance / 1000) : 0, // min/km                    
+            avgPace: distance > 0 ? (activeElapsed / 60_000) / (distance / 1000) : 0, // min/km                    
             altitudeStats: { 
                 min: altitudeList[0] || null, 
                 max: altitudeList[altitudeList.length - 1] || null, 

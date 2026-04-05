@@ -18,14 +18,14 @@ export class UIController {
             timerContainer: el("timers"),
             durationTimer: el("duration-timer"),
             pauseTimer: el("pause-timer"),
-    
+
             startContainer: el("start-container"),
             historyContainer: el("history-container"),
             actionContainer: el("action-container"),
             pauseOverlay: el("pause-overlay"),
 
             startBtn: el("start"),
-            stopBtn: el("stop"),            
+            stopBtn: el("stop"),
             pauseBtn: el("pause"),
             resumeBtn: el("resume"),
             historyBtn: el("history"),
@@ -73,7 +73,13 @@ export class UIController {
         });
 
         this.elements.clearHistoryBtn?.addEventListener('click', async () => {
-            if (typeof this.onClearHistory === "function") this.onClearHistory();
+            if (typeof this.onClearHistory === "function") {
+                try {
+                    await this.onClearHistory();
+                } catch (error) {
+                    console.error("Error", error);
+                }
+            }
         });
     }
 
@@ -110,7 +116,7 @@ export class UIController {
 
     formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
+        const secs = Math.round(seconds % 60);
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
@@ -119,8 +125,8 @@ export class UIController {
      * @param {Object} stats - Object containing distance, pace, time, etc.
      */
     updateTimerDisplays(stats) {
-        this.elements.durationTimer.textContent = this.formatTime(stats.totalElapsed);
-        this.elements.pauseTimer.textContent = `Paused: ${this.formatTime(stats.pausedElapsed || 0)}`;
+        this.elements.durationTimer.textContent = this.formatTime(stats?.totalElapsed || 0);
+        this.elements.pauseTimer.textContent = `Paused: ${this.formatTime(stats?.pausedElapsed || 0)}`;
     }
 
     /**
@@ -137,13 +143,26 @@ export class UIController {
      */
     async setRunningState(isRunning) {
         return Promise.all([
-            this.fadeInOut(this.elements.startContainer, isRunning ?'none':'block'),
-            this.fadeInOut(this.elements.historyContainer, isRunning ?'none':'flex'),
-            this.fadeInOut(this.elements.timerContainer, isRunning ?'block':'none'),
-            this.fadeInOut(this.elements.actionContainer, isRunning ?'flex':'none')
-        ]);        
+            this.fadeInOut(this.elements.startContainer, isRunning ? 'none' : 'block'),
+            this.fadeInOut(this.elements.historyContainer, isRunning ? 'none' : 'flex'),
+            this.fadeInOut(this.elements.timerContainer, isRunning ? 'block' : 'none'),
+            this.fadeInOut(this.elements.actionContainer, isRunning ? 'flex' : 'none')
+        ]);
     }
 
+    /**
+     * Update the visual state of the UI (e.g., paused/unpaused)
+     * @param {boolean} isPaused 
+     */
+    async setPauseState(isPaused) {
+        return this.fadeInOut(this.elements.pauseOverlay, isPaused ? 'block' : 'none')
+    }
+
+
+    /**
+     * Show or hide the pause overlay based on isPaused
+     * @param {boolean} isPaused 
+     * /
     async setPauseState(isPaused) {
         return this.fadeInOut(this.elements.pauseOverlay, isPaused ? 'block':'none');
     }
@@ -194,7 +213,7 @@ export class UIController {
      * @param {function} postProcess 
      * @returns {Promise<void>} Resolved promise when completed.
      */
-    async showMessageDialog(messageHtml, postProcess) { 
+    async showMessageDialog(messageHtml, postProcess) {
         return new Promise((resolve) => {
             const messageDialog = document.createElement("dialog");
             messageDialog.addEventListener('close', () => { resolve(messageDialog.returnValue); messageDialog.remove() });
@@ -228,6 +247,11 @@ export class UIController {
         })
     }
 
+    /**
+     * Display summary of the passed in run
+     * @param {*} summary 
+     * @returns Resolved promise when complete
+     */
     async showRunDetailsDialog(summary) {
         return this.showMessageDialog(`<table>
 <tr><th>Date</th><td>${new Date(summary.date).toLocaleString()}</td></tr>
@@ -241,7 +265,7 @@ export class UIController {
     <br />Max: ${typeof summary.altitudeStats?.max === 'number' ? summary.altitudeStats.max.toFixed(2) : 'N/A'}
     <br />Gain: ${typeof summary.altitudeStats?.gain === 'number' ? summary.altitudeStats.gain.toFixed(2) : 'N/A'}
 </td></tr>
-</table>`);         
+</table>`);
     }
 
     /**
@@ -314,29 +338,31 @@ export class UIController {
             });
 
             dialog.querySelectorAll('.remove-run').forEach(button => {
-                button.addEventListener('click', async () => {                                            
-                    try {
-                        if (typeof this.deleteRun !== "function") {
-                            return;
-                        }
-                    
-                        await this.deleteRun(JSON.parse(button.getAttribute('data-id')));
-
-                        // Start with the button element and traverse up the DOM tree until we find the <tr> ancestor
-                        // Remove it from the table to immediately reflect the deletion in the UI without needing to refresh the entire history dialog
-                        let tr = null;
-                        for (let node = button; node && !tr; node = node.parentElement) {
-                            if (node.tagName === "TR") {
-                                tr = node;
-                                break;
+                button.addEventListener('click', async () => {
+                    if (typeof this.deleteRun === "function") {
+                        try {
+                            const error = await this.deleteRun(JSON.parse(button.getAttribute('data-id')));
+                            if (error) {
+                                throw new Error(error);
                             }
-                        }
 
-                        if (tr) {
-                            tr.remove();
-                        }                        
-                    } catch (error) {
-                        // NOT deleted
+                            // Start with the button element and traverse up the DOM tree until we find the <tr> ancestor
+                            // Remove it from the table to immediately reflect the deletion in the UI without needing to refresh the entire history dialog
+                            let tr = null;
+                            for (let node = button; node && !tr; node = node.parentElement) {
+                                if (node.tagName === "TR") {
+                                    tr = node;
+                                    break;
+                                }
+                            }
+
+                            if (tr) {
+                                tr.remove();
+                            }
+                        } catch (error) {
+                            // NOT deleted
+                            console.log("Error deleting run: ", error)
+                        }
                     }
                 });
             });
@@ -351,6 +377,6 @@ export class UIController {
      */
     showError(message) {
         // Logic for a toast or alert
-        alert(message); 
+        alert(message);
     }
 }
