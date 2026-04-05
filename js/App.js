@@ -18,6 +18,9 @@ class App {
 
         this.watchdogTimer = null;
         this.currentRun = null;
+
+        this.movementThreadhold = 0.005; // 5m
+        this.movementGracePeriod = 60_000; // 60s
     }
 
     async init() {
@@ -53,32 +56,27 @@ class App {
     }
 
 
-    _startRunTimer(timeout = 1000) {
-        const app = this;
-
-        (function render() {
-            app.ui.updateTimerDisplays(app.currentRun);
-            app.animationFrameId = requestAnimationFrame(render);
-        })();
-
-        return setInterval(() => {
-            app.currentRun = app.engine.updateSession(app.currentRun);
-        }, timeout);        
-    }
-
     async startNewRun() {    
         // SAFETY: If a run is already in progress, stop it first to reset the tracker state
         if (this.currentRun) {
             this._trackerStop();
-            this.currentRun = null;
         }
 
         const now = Date.now();
-        this.currentRun = this.engine.updateSession({ date: now, route: [], lastMovementTimestamp: now});
+        // Initialize with zeroed out time
+        this.currentRun = this.engine.updateSession({
+            date: now, 
+            route: [], 
+            lastMovementTimestamp: now, 
+            pausedElapsed: 0,
+            paused: false
+        });
+
         this.tracker.start();
         this.ui.setRunningState(true);
 
-        // Start the "Stationary Watchdog" timer
+        this.lastTickTime = null; // Reset tick for the new loop
+        this._startUnifiedLoop();
         this._startStationaryWatchdog();        
     }
 
@@ -97,11 +95,11 @@ class App {
             const timeSinceMovement = Date.now() - this.currentRun.lastMovementTimestamp;
             
             // If no movement seen for > 60 seconds, pause the run
-            if (timeSinceMovement > 60_000) {
+            if (timeSinceMovement > this.movementGracePeriod) {
                 console.log("Stationary detected via watchdog");
                 this.pauseRun();
             }
-        }, 5000); // Check every 5 seconds
+        }, 5_000); // Check every 5 seconds
     }
         
 
@@ -113,8 +111,14 @@ class App {
         const distanceMoved = currentDistance - previousDistance;
 
         // If movement is significant, update the timestamp
-        if (distanceMoved > 0.005) {
-            this.currentRun.lastMovementTimestamp = Date.now();
+        if (distanceMoved > this.movementThreadhold) {            
+            // Auto un-pause if movement is detected
+            if (this.currentRun.paused) {
+                console.log("Movement detected via watchdog, un-pausing run")
+                this.resumeRun();
+            } else {
+                this.currentRun.lastMovementTimestamp = Date.now();
+            }
         }
 
         this.ui.updateMapPositions(this.currentRun?.route);
@@ -122,49 +126,57 @@ class App {
     }
 
 
-    _startPauseTimer(timeout = 1000) {
+    /**
+     * The ONLY loop the app uses. 
+     * It handles both Running and Paused states by simply 
+     * observing the passage of time.
+     */
+    _startUnifiedLoop() {
         const app = this;
 
-        (function render() {
+        const loop = (currentTime) => {
+            if (!app.lastTickTime) app.lastTickTime = currentTime;
+            
+            // Calculate delta (time since last frame)
+            const deltaTime = (currentTime - app.lastTickTime) / 1000;
+            app.lastTickTime = currentTime;
+
+            // 1. Update the Logic (Only if not paused)
+            if (app.currentRun && !app.currentRun.paused) {
+                app.currentRun = app.engine.updateSession(app.currentRun);
+            } else if (app.currentRun && app.currentRun.paused) {
+                // If paused, we also need to update the "paused elapsed" part of the engine
+                // by passing the deltaTime to the accumulated pause time.
+                app.currentRun.pausedElapsed += deltaTime;
+                app.currentRun = app.engine.updateSession(app.currentRun);
+            }
+
+            // 2. Update the UI (Always, so the clock/timer stays visible)
             app.ui.updateTimerDisplays(app.currentRun);
-            app.animationFrameId = requestAnimationFrame(render);
-        })();
 
-        let startTime = Date.now();
+            // 3. Schedule next frame
+            app.animationFrameId = requestAnimationFrame(loop);
+        };
 
-        return setInterval(() => {
-            const now = Date.now();
-            const elapsed = Math.floor((now - startTime) / 1000) // Calc actual time between interval (in seconds)
-            startTime = now;
-
-            app.currentRun.pausedElapsed += elapsed;
-            app.currentRun = app.engine.updateSession(app.currentRun);            
-        }, timeout);
+        app.animationFrameId = requestAnimationFrame(loop);
     }
 
+    
     pauseRun() {
-        clearInterval(this.watchdogTimer)
-        this.watchdogTimer = null;
-
-        clearInterval(this.currentRun.timer);
-        cancelAnimationFrame(this.animationFrameId);
+        if (!this.currentRun || this.currentRun.paused) return; 
         
-        this.currentRun.pausedElapsed = this.currentRun.pausedElapsed || 0; // Ensure pausedElapsed is initialised
         this.currentRun.paused = true;
-        this.currentRun.timer = this._startPauseTimer();    
-
-        this.currentRun = this.engine.updateSession(this.currentRun); 
-        this.ui.setPauseState(this.currentRun.paused);
+        this.ui.setPauseState(true);
+        // We don't stop the loop! The loop just starts accumulating 'pausedElapsed'
     }
 
     resumeRun() {
-        clearInterval(this.currentRun.timer);
-        cancelAnimationFrame(this.animationFrameId);
+        if (!this.currentRun || !this.currentRun.paused) return;
 
+        this.currentRun.lastMovementTimestamp = Date.now(); // Reset the last movement timestamp to allow for another grace period.
         this.currentRun.paused = false;
-        this.currentRun.timer = this._startRunTimer();
-        this.currentRun = this.engine.updateSession(this.currentRun);        
-        this.ui.setPauseState(this.currentRun.paused);
+        this.ui.setPauseState(false);
+        // The loop is already running; it just switches logic back to 'active'
     }
 
 
@@ -173,15 +185,11 @@ class App {
      */
     _trackerStop() {
         this.tracker.stop();
-        
-        clearInterval(this.watchdogTimer);
-        this.watchdogTimer = null;
-
-        clearInterval(this.currentRun.timer);  
-        this.currentRun.timer = null;
-        
-        cancelAnimationFrame(this.animationFrameId);
+        if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+        if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
         this.animationFrameId = null;
+        this.lastTickTime = null;
+        this.watchdogTimer = null; // We don't need to clear it, but just in case
     }
 
     async stopCurrentRun() {
