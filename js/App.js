@@ -11,7 +11,7 @@ import { ExportService } from './ExportService.js';
 class App {
     constructor() {
         this.ui = new UIController();
-        this.storage = new StorageService();
+        this.storage = new StorageService('RunningManDB');
         this.tracker = new LocationService();
         this.engine = new TrackerEngine();
         this.export = new ExportService();

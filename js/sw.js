@@ -2,8 +2,9 @@
  * sw.js
  * Responsibility: Handles service worker lifecycle events and manages caching of static resources.
  */
-const version = __APP_VERSION__; 
-const CACHE_NAME = `runningMan-${version}`;
+const appName = __APP_NAME__; 
+const appVersion = __APP_VERSION__;;
+const CACHE_NAME = `${appName}-${appVersion}`;
 
 const urlsToCache = [
 	'/',

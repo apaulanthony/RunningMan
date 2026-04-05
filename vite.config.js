@@ -3,8 +3,9 @@ import pkg from './package.json';
 
 export default defineConfig({
   	define: {
-		// Define a global variable for the app version for .js to bake in
-  		__APP_VERSION__: JSON.stringify(pkg.version),
+		// Define a global variable for the app name and version for .js to bake in
+		__APP_NAME__: JSON.stringify(pkg.name),
+  		__APP_VERSION__: JSON.stringify(pkg.version)
   	},
 
 	// The default "/" (without the "." current path) would put the base path at https://apaulanthony.github.io/ 

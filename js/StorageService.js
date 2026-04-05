@@ -2,11 +2,14 @@
  * StorageService.js
  * Responsibility: Stores and retrieves data from local storage
  */
-const version = __APP_VERSION__;
-
 export class StorageService {
+    constructor(name = __APP_NAME__) {
+        this.name = name;
+    }
+
     init() {
-        this.version = this.convertVersionToInt32(version);
+        // Convert the sematic version number from package.json to a 32-bit integer
+        this.version = this.convertVersionToInt32(__APP_VERSION__);
     }
 
     /**
@@ -52,9 +55,8 @@ export class StorageService {
      * @returns {Promise<IDBDatabase>}
      */
     async openDB() {
-        return new Promise((resolve, reject) => {
-            // Read application version number from package.json and convert a sematic versioning string into an 32-bit integer.		
-            const request = indexedDB.open('RunningManDB', this.version);
+        return new Promise((resolve, reject) => {	
+            const request = indexedDB.open(this.name, this.version);
             request.onerror = (event) => reject(event.target.error);
 
             request.onupgradeneeded = (event) => {
