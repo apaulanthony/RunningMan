@@ -35,16 +35,12 @@ class App {
         this.ui.deleteRun = id => this.deleteRun(id);
 
         // The Mediator: Connects the GPS updates to the Logic and UI
-        this.tracker.subscribe(this.updateCurrentPosition.bind(this));
+        this.tracker.subscribe(coords => this.updateCurrentPosition(coords));
 
         // Register service worker for offline support
         try {
-            const registration = navigator?.serviceWorker?.register?.('sw.js');
-            if (registration) {
-                console.log('Service Worker registered:', registration);
-            } else {
-                throw new Error('Service Worker registration failed');
-            }
+            const registration = await navigator.serviceWorker?.register('sw.js');
+            console.log('Service Worker registered:', registration);
         } catch (error) {
             console.log('Service Worker registration failed:', error);
         }
