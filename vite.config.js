@@ -7,8 +7,9 @@ export default defineConfig({
   		__APP_VERSION__: JSON.stringify(pkg.version),
   	},
 
-	// The default "/" (without the "." current path) would put base path at https://apaulanthony.github.io/ 
-	// removing the /RunningMan/dist/ path. "./" will also work better when testing locally e.g. http://localhost:4173 
+	// The default "/" (without the "." current path) would put the base path at https://apaulanthony.github.io/ 
+	// removing the /RunningMan/dist/ part. Using a relative path "./" instead will work with any location, nested
+	// or otherwise, including vite's local previews e.g. http://localhost:4173 
 	base: "./",
 
 	build: {
