@@ -36,6 +36,8 @@ If you tap-and-hold on the installed app's icon there's an additional shortcut t
 - [X] ~~Make PWA~~
 - [X] ~~Display captured run data. Implement download/clear~~
 - [X] ~~Add elevatation and timestamps to the stored route points~~
+- [X] ~~Expose maintenance functions (clear cache, fix data)~~
+- [X] ~~Apply version control to DB/SW based on package.json version~~
 - [ ] Push the tracking to happen in the background (service worker)
-- [ ] Config panel 
+- [ ] Config panel
 - [ ] Update screenshots

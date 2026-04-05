@@ -2,11 +2,11 @@
  * StorageService.js
  * Responsibility: Stores and retrieves data from local storage
  */
-import packageJson from '../package.json';
+const version = __APP_VERSION__; 
 
 export class StorageService {
     init() {
-        this.version = this.convertVersionToInt32(packageJson.version);
+        this.version = this.convertVersionToInt32(version);
     }
 
     /**
@@ -205,11 +205,20 @@ export class StorageService {
 
         // Write corrections and series of map. If the correction is detect, then clone the
         // run object and make the changes to that, otherwise let the original drop through.
-        // Mark updated/replacement run objects with "fixed", and we can use an Iterator with
-        // a Stream-like pattern to effeciently walk through an apply changs in one loop.
-        // Fallback to a normal array if Iterator not availailable, same end effect, but each
-        // step would trigger its own loop.
-        const runStream = (typeof Iterator?.from === "function" ? Iterator.from(runs) : runs).map(run => {
+        // Mark updated/replacement run objects with "fixed". We can use an Iterator to walk
+        // through all items one at a time, applying all of the maps' changes, in just one loop.        
+        // Fallback to a normal array if Iterator isn't available, same end-effect but each        
+        // step would trigger its own array and loop making if much more inefficient.
+
+        // Check if we have the modern Iterator Helpers (map, filter, etc.)
+        const hasIteratorHelpers = self.Iterator?.from === "function" 
+            && typeof Iterator.prototype.map === 'function' 
+            && typeof Iterator.prototype.filter === 'function';
+
+        const runsIterator = (hasIteratorHelpers 
+            ? Iterator.from(runs)  // Lazy & Efficient
+            : runs  // Eager & Compatible
+        ).map(run => {
             if (!run.route.route) return run;
 
             // Is there a spurious route within route? If so, collapse it to be the main object, 
@@ -258,9 +267,9 @@ export class StorageService {
             .map(run => {
                 const update = { ...run };
                 delete update.fixed;
-                return this.saveRun(update);
-            })
+                return update;
+            });
 
-        return Promise.all(runStream);
+        return Promise.all(runsIterator.map(update => this.saveRun(update)));
     }
 }

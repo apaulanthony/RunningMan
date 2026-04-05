@@ -48,16 +48,16 @@ class App {
 
             const search = (location.search && new URLSearchParams(location.search)) || null;
             if (search) {
-                if ((search?.get("clearCache") === "true")) {
+                if ((search.get("clearCache") === "true")) {
                     await caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))));
                 }
     
-                if (search?.get("fixData") === "true") {
+                if (search.get("fixData") === "true") {
                     await this.storage.fixData().then(result => console.log(`FixData Updated ${result.length}`, result), error => console.log("FixData error", error));
                 }
     
                 // Link the manifest registered short cut ?start=true to fire when the app is launched
-                if (search?.get("start") === "true") {
+                if (search.get("start") === "true") {
                     await this.startNewRun();
                 }
             }

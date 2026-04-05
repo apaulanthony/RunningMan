@@ -67,6 +67,18 @@
 					"type": "image/png"
 				}
 			]
+		}, {
+			"name": "Force Reload",
+			"short_name": "Start",
+			"description": "Clear cache and force a reload of the application (stored run data won't be affected)",
+			"url": "./?clearCache=true",
+			"icons": [
+				{
+					"src": "./icon-96.png",
+					"sizes": "96x96",
+					"type": "image/png"
+				}
+			]
 		}
 	]
 }

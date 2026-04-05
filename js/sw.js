@@ -1,4 +1,10 @@
-const CACHE_NAME = 'runningMan-v1';
+/**
+ * sw.js
+ * Responsibility: Handles service worker lifecycle events and manages caching of static resources.
+ */
+const version = __APP_VERSION__; 
+const CACHE_NAME = `runningMan-${version}`;
+
 const urlsToCache = [
 	'/',
 	'/index.html',
