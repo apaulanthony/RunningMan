@@ -23,30 +23,29 @@ export class StorageService {
      */
     convertVersionToInt32(version) {
         // Split a given version string into three parts.
-        let parts = version.split('.');
+        const parts = version.split('.');
 
         // Check if we got exactly three parts, otherwise throw an error.
         if (parts.length !== 3) {
             throw new Error('Received invalid version string');
         }
 
-        // Make sure that no part is larger than 1023 or else it
-        // won't fit into a 32-bit integer.
-        parts.forEach((part) => {
-            if (part >= 1024) {
-                throw new Error(`Version string invalid, ${part} is too large`);
+        // 1. Map the strings to numbers and validate them.
+        // 2. Reverse them so index 0 = Patch, 1 = Minor, 2 = Major.        
+        const numericParts = parts.map(part => {
+            const val = parseInt(part, 10);
+            
+            if (isNaN(val) || val >= 1024) {
+                throw new Error(`Invalid version component: ${part}`);
             }
-        });
 
-        // Let's create a new number which we will return later on
-        let numericVersion = 0;
+            return val;
+        }).reverse();
 
-        // Shift all parts either 0, 10 or 20 bits to the left.
-        for (let i = 0; i < 3; i++) {
-            numericVersion |= parts[i] << i * 10;
-        }
-
-        return numericVersion;
+        // Shift all parts either 0, 10 or 20 bits to the left, then combine them using reduce`
+        return numericParts.reduce((acc, val, i) => {
+            return acc | (val << (i * 10));
+        }, 0);
     }
 
     /**

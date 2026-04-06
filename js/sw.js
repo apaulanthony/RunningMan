@@ -3,7 +3,7 @@
  * Responsibility: Handles service worker lifecycle events and manages caching of static resources.
  */
 const appName = __APP_NAME__; 
-const appVersion = __APP_VERSION__;;
+const appVersion = __APP_VERSION__;
 const CACHE_NAME = `${appName}-${appVersion}`;
 
 const urlsToCache = [
