@@ -61,7 +61,7 @@ export class TrackerEngine {
         const lastPoint = currentSession.route?.[currentSession.route.length - 1];
 
         // Append current point to the session's route
-        const route = [...currentSession.route];
+        const route = [...(currentSession.route || [])];
         if (newCoord){
             route.push([longitude, latitude, altitude, timestamp, speed, heading]);
         }

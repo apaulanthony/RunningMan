@@ -202,11 +202,10 @@ class App {
         this.currentRun.finised = new Date();
         const currentRun = this.engine.updateSession(this.currentRun);
 
-        this.ui.setRunningState(!this.currentRun.finised);
-
-        this.currentRun = null;
         this.storage.saveRun(currentRun);
-
+        
+        this.currentRun = null;
+        this.ui.setRunningState(false);
         this.ui.showRunDetailsDialog(currentRun);
     }
 
