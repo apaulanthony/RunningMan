@@ -55,13 +55,6 @@ export class LocationService {
             return;
         }
 
-        // // Get an immediate high-precision lock on location https://developer.mozilla.org/docs/Web/API/Geolocation/getCurrentPosition
-        // new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, this.geoOptions)).then(
-        //     (position) => this._handleSuccess(position),
-        //     (error) => this._handleError(error)            
-        // );
-        
-        //Then set up a watch https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition
         this.watchId = navigator.geolocation.watchPosition(
             (position) => this._handleSuccess(position),
             (error) => this._handleError(error),
