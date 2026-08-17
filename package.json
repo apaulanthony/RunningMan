@@ -1,6 +1,6 @@
 {
 	"name": "runningman",
-	"version": "1.4.0",
+	"version": "1.4.1",
 	"description": "Simple run tracking app",
 	"type": "module",
 	"scripts": {
@@ -15,7 +15,7 @@
 		"jszip": "^3.10.1",
 		"ol": "^10.8.0",
 		"sass": "^1.98.0",
-		"sharp": "^0.33.5",
+		"sharp": "^0.35.3",
 		"vite": "^8.0.3"
 	},
 	"private": true,
